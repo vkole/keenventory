@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect, useState, useCallback } from "react";
 import { jsonRequest, buttonClass } from "./ProductForm";
 export async function uploadAttachments(
@@ -135,7 +136,10 @@ export function AttachmentGallery({
             {pending[i]?.type.startsWith("video/") ? (
               <video src={url} controls className="h-24 w-40 rounded-xl" />
             ) : (
-              <img
+              <Image
+                unoptimized
+                width={96}
+                height={96}
                 src={url}
                 alt={`Selected ${i + 1}`}
                 className="h-24 w-24 rounded-xl object-cover"
@@ -158,7 +162,10 @@ export function AttachmentGallery({
                 className="h-28 w-40 rounded-xl"
               />
             ) : (
-              <img
+              <Image
+                unoptimized
+                width={112}
+                height={112}
                 src={`/api/attachments?id=${row.id}`}
                 alt={row.filename}
                 className="h-28 w-28 rounded-xl object-cover"

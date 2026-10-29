@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useEffect, useState, useCallback } from "react";
 import { jsonRequest } from "./ProductForm";
 export function ProductSavedImages({ id }: { id: number }) {
@@ -31,7 +32,10 @@ export function ProductSavedImages({ id }: { id: number }) {
       <div className="flex flex-wrap gap-4">
         {images.map((image) => (
           <div className="grid gap-2 text-sm" key={image.id}>
-            <img
+            <Image
+              unoptimized
+              width={112}
+              height={112}
               alt="Product"
               src={"/api/products/images?id=" + image.id}
               className="h-28 w-28 rounded-xl object-cover"

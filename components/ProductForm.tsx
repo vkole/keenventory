@@ -1,4 +1,5 @@
 ﻿'use client';
+import Image from 'next/image';
 import {ProductSavedImages} from './ProductSavedImages';
 import { useEffect, useState } from 'react';
 import type { ProductRecord } from '@/lib/productStore';
@@ -335,7 +336,10 @@ export function ProductForm({
         <div className="mt-3 flex flex-wrap gap-3">
           {preview.map((src, i) => (
             <div key={src}>
-              <img
+              <Image
+                unoptimized
+                width={96}
+                height={96}
                 className="h-24 w-24 rounded-xl object-cover"
                 src={src}
                 alt={`Selected image ${i + 1}`}

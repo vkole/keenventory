@@ -1,7 +1,7 @@
 ﻿"use client";
 import { can, type Viewer } from "@/lib/permissions";
 import { AttachmentGallery, uploadAttachments } from "./AttachmentGallery";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { DashboardData, Recipe } from "@/lib/data";
 import {
   planProduction,
@@ -31,6 +31,48 @@ export type EditableRecipe = Recipe & {
   labor_reference_yield?: number;
   overhead?: number;
 };
+const emptyRecipe = (productId = 0) => ({
+  id: undefined as number | undefined,
+  name: "",
+  product_id: productId,
+  version: 1,
+  product_variant: "",
+  measurement_unit: "candles",
+  batch_yield: 12,
+  batch_minutes: 45,
+  hourly_labor_rate: 12,
+  labor_mode: "fixed",
+  labor_reference_yield: 12,
+  overhead: 0,
+  status: "Draft",
+  instructions: "",
+  notes: "",
+  description: "",
+  preparation_notes: "",
+  safety_notes: "",
+  ingredients: [] as Ingredient[],
+});
+function recipeDraft(r: EditableRecipe, duplicate = false) {
+  return {
+    ...emptyRecipe(),
+    ...r,
+    id: duplicate ? undefined : r.id,
+    name: duplicate ? `${r.name} (copy)` : r.name,
+    version: duplicate ? r.version + 1 : r.version,
+    product_id: r.product_id ?? 0,
+    notes: r.notes ?? "",
+    description: r.description ?? "",
+    preparation_notes: r.preparation_notes ?? "",
+    safety_notes: r.safety_notes ?? "",
+    product_variant: r.product_variant ?? "",
+    measurement_unit: r.measurement_unit ?? "candles",
+    labor_mode: r.labor_mode ?? "fixed",
+    labor_reference_yield: r.labor_reference_yield ?? r.batch_yield,
+    overhead: r.overhead ?? 0,
+    ingredients: r.ingredients.map((i) => ({ ...i })),
+  };
+}
+
 export function RecipeBuilder({
   data,
   onRefresh,
@@ -50,58 +92,20 @@ export function RecipeBuilder({
   onRefresh: () => void;
   onManufacture: (r: EditableRecipe, count: number) => void;
 }) {
-  const empty = () => ({
-    id: undefined as number | undefined,
-    name: "",
-    product_id:
-      productId ??
-      data.products.find((p) => !p.archived_at && p.state === "Active")?.id ??
-      0,
-    version: 1,
-    product_variant: "",
-    measurement_unit: "candles",
-    batch_yield: 12,
-    batch_minutes: 45,
-    hourly_labor_rate: 12,
-    labor_mode: "fixed",
-    labor_reference_yield: 12,
-    overhead: 0,
-    status: "Draft",
-    instructions: "",
-    notes: "",
-    description: "",
-    preparation_notes: "",
-    safety_notes: "",
-    ingredients: [] as Ingredient[],
-  });
-  function recipeDraft(r: EditableRecipe, duplicate = false) {
-    return {
-      ...empty(),
-      ...r,
-      id: duplicate ? undefined : r.id,
-      name: duplicate ? `${r.name} (copy)` : r.name,
-      version: duplicate ? r.version + 1 : r.version,
-      product_id: r.product_id ?? 0,
-      notes: r.notes ?? "",
-      description: r.description ?? "",
-      preparation_notes: r.preparation_notes ?? "",
-      safety_notes: r.safety_notes ?? "",
-      product_variant: r.product_variant ?? "",
-      measurement_unit: r.measurement_unit ?? "candles",
-      labor_mode: r.labor_mode ?? "fixed",
-      labor_reference_yield: r.labor_reference_yield ?? r.batch_yield,
-      overhead: r.overhead ?? 0,
-      ingredients: r.ingredients.map((i) => ({ ...i })),
-    };
-  }
+  const empty = () => emptyRecipe(productId ?? data.products.find((p) => !p.archived_at && p.state === "Active")?.id ?? 0);
   const [form, setForm] = useState(() =>
-    initialRecipe ? recipeDraft(initialRecipe, duplicate) : empty(),
+    initialRecipe
+      ? recipeDraft(initialRecipe, duplicate)
+      : empty(),
   );
   const [files, setFiles] = useState<File[]>([]);
   const costView = !user || can(user, "materialCosts"),
     costEdit = !user || can(user, "materialCosts", "edit");
   useEffect(() => {
-    if (initialRecipe) open(initialRecipe, duplicate);
+    if (initialRecipe) {
+      setForm(recipeDraft(initialRecipe, duplicate));
+      setMessage("");
+    }
   }, [initialRecipe, duplicate]);
   const [stock, setStock] = useState<Stock[]>(data.materials);
   const [retail, setRetail] = useState(
@@ -124,19 +128,20 @@ export function RecipeBuilder({
     stock_quantity: 0,
     category: "Candle Wax",
   });
-  async function refreshStock() {
+  const stockEndpoint = user && !can(user, "manufacturing")
+    ? "/api/materials"
+    : "/api/manufacturing";
+  const refreshStock = useCallback(async () => {
     const response = await fetch(
-      user && !can(user, "manufacturing")
-        ? "/api/materials"
-        : "/api/manufacturing",
+      stockEndpoint,
       { cache: "no-store" },
     );
     if (!response.ok) throw new Error("Could not refresh inventory.");
     setStock((await response.json()).materials);
-  }
+  }, [stockEndpoint]);
   useEffect(() => {
     refreshStock().catch((e) => setMessage(e.message));
-  }, [data.materials]);
+  }, [data.materials, refreshStock]);
   const plan = planProduction(form, stock);
   const prices = pricing(plan.costPerUnit, retail, markup, margin, method);
   const numberField = (
@@ -159,13 +164,11 @@ export function RecipeBuilder({
       />
     </label>
   );
-  function open(r: EditableRecipe, duplicate = false) {
-    setForm(recipeDraft(r, duplicate));
-    setRetail(
-      data.products.find((p) => p.id === r.product_id)?.retail_price ?? 0,
-    );
-    setMessage("");
-  }
+  useEffect(() => {
+    if (initialRecipe) {
+      setRetail(data.products.find((p) => p.id === initialRecipe.product_id)?.retail_price ?? 0);
+    }
+  }, [initialRecipe, data.products]);
   async function save(action: string) {
     setBusy(true);
     setMessage("");

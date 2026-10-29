@@ -1,4 +1,5 @@
 ﻿'use client';
+import Image from 'next/image';
 import {ImportWizard} from './ImportWizard';
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardData, Recipe } from '@/lib/data';
@@ -381,9 +382,12 @@ export function ProductWorkspace({
   const cell = (p: ProductRecord, column: string) =>
     column === 'Product Image' ? (
       p.image_id||p.image_url ? (
-        <img
+        <Image
+          unoptimized
+          width={48}
+          height={48}
           className="h-12 w-12 rounded-lg object-cover"
-          src={p.image_id?`/api/products/images?id=${p.image_id}`:p.image_url}
+          src={p.image_id?`/api/products/images?id=${p.image_id}`:p.image_url!}
           alt={p.name}
         />
       ) : (
@@ -458,7 +462,10 @@ export function ProductWorkspace({
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 {(p.image_id||p.image_url) && (
-                  <img
+                  <Image
+                    unoptimized
+                    width={80}
+                    height={80}
                     className="h-20 w-20 rounded-xl object-cover"
                     src={`/api/products/images?id=${p.image_id}`}
                     alt={p.name}
@@ -540,7 +547,10 @@ export function ProductWorkspace({
                         key={i.id}
                         className="space-y-2 rounded-xl border p-3"
                       >
-                        <img
+                        <Image
+                          unoptimized
+                          width={144}
+                          height={144}
                           className="h-36 w-36 rounded-xl object-cover"
                           src={`/api/products/images?id=${i.id}`}
                           alt={p.name}
@@ -767,7 +777,10 @@ export function ProductWorkspace({
                     >
                       <div>
                         {v.image_id && (
-                          <img
+                          <Image
+                            unoptimized
+                            width={64}
+                            height={64}
                             className="h-16 w-16 rounded-xl object-cover"
                             src={`/api/products/images?id=${v.image_id}`}
                             alt={v.name}

@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import QRCode from "qrcode";
@@ -117,7 +118,10 @@ export function AccountSettingsWorkspace({ user }: { user: Viewer }) {
         <h2 className="text-xl">Profile Image</h2>
         {image && (
           <>
-            <img
+            <Image
+              unoptimized
+              width={96}
+              height={96}
               src={image}
               alt="Your profile"
               className="h-24 w-24 rounded-full object-cover"
@@ -269,7 +273,10 @@ export function AccountSettingsWorkspace({ user }: { user: Viewer }) {
         {uri && (
           <div className="grid gap-3 rounded-xl bg-[#F4EAE8] p-4">
             {qr && (
-              <img
+              <Image
+                unoptimized
+                width={192}
+                height={192}
                 src={qr}
                 alt="Scan with your authenticator app"
                 className="h-48 w-48"

@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useState } from "react";
 import { inputClass, buttonClass } from "./ProductForm";
 export function LoginForm({
@@ -78,10 +79,14 @@ export function LoginForm({
         <div className="mb-8 text-center">
           {logo && (
             <div className="relative mx-auto mb-6 h-32 w-full overflow-hidden">
-              <img
+              <Image
+                width={3000}
+                height={3000}
+                sizes="(max-width: 640px) 100vw, 384px"
+                priority
                 src={logo}
                 alt="Keen Scents Handmade"
-                className="absolute left-0 top-1/2 w-full max-w-none -translate-y-[54%]"
+                className="absolute left-0 top-1/2 h-auto w-full max-w-none -translate-y-[54%]"
               />
             </div>
           )}

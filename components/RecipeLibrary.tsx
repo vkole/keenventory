@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import type { DashboardData } from "@/lib/data";
@@ -110,7 +111,10 @@ export function RecipeLibrary({
                 <td className="p-3">
                   <div className="flex items-center gap-3">
                     {r.image_id && (
-                      <img
+                      <Image
+                        unoptimized
+                        width={48}
+                        height={48}
                         alt=""
                         src={"/api/attachments?id=" + r.image_id}
                         className="h-12 w-12 rounded-lg object-cover"
