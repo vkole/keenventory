@@ -8,6 +8,8 @@ export const actions = [
 ] as const;
 export type Action = (typeof actions)[number];
 export const features: Record<string, readonly Action[]> = {
+  calendar:['view','create','edit','delete'],
+  content:['view','create','edit','delete','export'],
   products: ["view", "create", "edit", "delete", "export"],
   materials: ["view", "create", "edit", "delete", "export"],
   components: ["view", "create", "edit", "delete", "export"],
@@ -32,6 +34,7 @@ export const features: Record<string, readonly Action[]> = {
   account: ["view", "edit"],
 };
 export const featureLabels: Record<string, string> = {
+  calendar:'Calendars',content:'Content Calendar',
   products: "Products",
   materials: "Materials",
   components: "Components",
@@ -92,6 +95,7 @@ export function defaults(role: Role): Permissions {
     "stocktakes",
     "adjustments",
     "transfers",
+    "calendar","content",
   ];
   if (role === "Manager")
     return Object.fromEntries(operational.map((k) => [k, [...features[k]]]));
@@ -105,6 +109,7 @@ export function defaults(role: Role): Permissions {
         "manufacturing",
         "orders",
         "stocktakes",
+        "calendar","content",
       ].map((k) => [k, k === "stocktakes" ? ["view", "create"] : ["view"]]),
     );
   return Object.fromEntries(operational.map((k) => [k, ["view"]]));

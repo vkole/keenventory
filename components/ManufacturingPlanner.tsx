@@ -30,6 +30,7 @@ export function ManufacturingPlanner({
   const [recipeId, setRecipeId] = useState(
     seed?.recipe.id ?? data.recipes[0]?.id ?? 0,
   );
+  useEffect(()=>{const id=Number(new URLSearchParams(window.location.search).get('recipe'));if(data.recipes.some(r=>r.id===id))setRecipeId(id);},[data.recipes]);
   const [count, setCount] = useState(seed?.count ?? 12);
   const [stock, setStock] = useState<Stock[]>(data.materials);
   const [batches, setBatches] = useState<Batch[]>([]);

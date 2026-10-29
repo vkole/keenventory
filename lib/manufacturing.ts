@@ -159,7 +159,7 @@ export function completeBatch(
             `Insufficient unreserved inventory for ${m?.name ?? c.material_id}.`,
           );
         const snap = expected.find((e) => e.id === c.material_id)!;
-        db.prepare("INSERT INTO inventory_ledger(material_id,location,delta,balance,kind,reason,reference_type,reference_id) VALUES (?,?,?,?,'Manufacturing consumption',?,'manufacturing',?)").run(c.material_id,'Inventory',-c.quantity,quantity(decimal(m.stock_quantity).minus(c.quantity)),`Batch #${p.id}`,p.id);
+        db.prepare("INSERT INTO inventory_ledger(material_id,location,delta,balance,kind,reason,reference_type,reference_id,unit_cost) VALUES (?,?,?,?,'Manufacturing consumption',?,'manufacturing',?,?)").run(c.material_id,'Inventory',-c.quantity,quantity(decimal(m.stock_quantity).minus(c.quantity)),`Batch #${p.id}`,p.id,m.cost_per_unit);
         materialCost = materialCost.plus(
           decimal(c.quantity).times(snap.cost_per_unit),
         );
@@ -182,6 +182,7 @@ export function completeBatch(
       const destination = (db.prepare('SELECT location FROM products WHERE id=?').get(batch.product_id) as {location:string}).location;
       moveStock(db,{id:batch.product_id,location:destination,delta:p.actual_quantity,kind:'Manufacturing',reason:`Batch #${p.id}`,reference_type:'manufacturing',reference_id:p.id,request_key:`manufacturing:${p.id}`});
       if(p.actual_quantity>0)db.prepare('UPDATE products SET cost_per_unit=? WHERE id=?').run(quantity(decimal(product.stock_quantity).times(product.cost_per_unit).plus(actualCost).div(decimal(product.stock_quantity).plus(p.actual_quantity))),batch.product_id);
+      db.prepare("UPDATE inventory_ledger SET unit_cost=(SELECT cost_per_unit FROM products WHERE id=?) WHERE request_key=?").run(batch.product_id,`manufacturing:${p.id}`);
       db.prepare(
         "UPDATE manufacturing_batches SET status='Completed', completed_quantity=?, actual_minutes=?, hourly_labor_rate=?, actual_cost=?, consumption=?, completed_at=CURRENT_TIMESTAMP WHERE id=?",
       ).run(

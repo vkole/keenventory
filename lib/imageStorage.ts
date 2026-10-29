@@ -71,3 +71,10 @@ export async function deleteImage(key: string) {
     new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }),
   );
 }
+export async function storeMedia(file:File){
+  if(['image/jpeg','image/png','image/webp'].includes(file.type))return {key:await storeImage(file),type:'image/webp'};
+  if(!['video/mp4','video/webm'].includes(file.type)||file.size>40*1024*1024)throw Error('Use JPG, PNG, WebP, MP4 or WebM; videos must be 40 MB or smaller.');
+  const bytes=Buffer.from(await file.arrayBuffer());
+  if(file.type==='video/mp4'?bytes.toString('ascii',4,8)!=='ftyp':bytes.subarray(0,4).toString('hex')!=='1a45dfa3')throw Error('Unsupported video data.');
+  const key=`content/${randomUUID()}.${file.type==='video/mp4'?'mp4':'webm'}`;await imageStorage().send(new PutObjectCommand({Bucket:process.env.S3_BUCKET,Key:key,Body:bytes,ContentType:file.type}));return {key,type:file.type};
+}

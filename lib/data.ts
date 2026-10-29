@@ -43,6 +43,7 @@ export type Recipe = {
   notes: string | null;
   is_active: boolean;
   created_at: string;
+  image_id?:number;updated_at?:string;description?:string;preparation_notes?:string;safety_notes?:string;
   product_variant?: string;
   measurement_unit?: string;
   labor_mode?: string;
@@ -151,7 +152,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const materials = inventory(db).sort((a, b) => a.name.localeCompare(b.name)) as Material[];
   const products = managedProducts(db) as Product[];
-  const recipes = db.prepare('SELECT * FROM recipes ORDER BY created_at DESC').all() as Array<{
+  const recipes = db.prepare("SELECT r.*,(SELECT id FROM attachments a WHERE a.owner_type='recipe' AND a.owner_id=r.id ORDER BY is_primary DESC,id LIMIT 1) image_id FROM recipes r ORDER BY created_at DESC").all() as Array<{
     id: number;
     name: string;
     product_id: number | null;
@@ -212,35 +213,10 @@ export async function getDashboardData(): Promise<DashboardData> {
   };
 
   const chartData = {
-    sales: [
-      { name: 'Apr', sales: 6200, orders: 22 },
-      { name: 'May', sales: 7100, orders: 24 },
-      { name: 'Jun', sales: 7900, orders: 28 },
-      { name: 'Jul', sales: 8600, orders: 31 },
-      { name: 'Aug', sales: 9500, orders: 33 },
-      { name: 'Sep', sales: 10400, orders: 39 },
-    ],
-    inventory: [
-      { month: 'Jan', value: 16000 },
-      { month: 'Feb', value: 17200 },
-      { month: 'Mar', value: 18250 },
-      { month: 'Apr', value: 19600 },
-      { month: 'May', value: 20400 },
-      { month: 'Jun', value: 21850 },
-    ],
-    materialUsage: [
-      { name: 'Wax', value: 40 },
-      { name: 'Fragrance', value: 24 },
-      { name: 'Jars', value: 16 },
-      { name: 'Labels', value: 12 },
-      { name: 'Packaging', value: 8 },
-    ],
-    batches: [
-      { name: 'Draft', value: 3 },
-      { name: 'In Progress', value: 2 },
-      { name: 'Completed', value: 15 },
-      { name: 'Cancelled', value: 1 },
-    ],
+    sales:db.prepare("SELECT substr(order_date,1,7) name,SUM(total) sales,COUNT(*) orders FROM sales_orders WHERE status NOT IN ('Cancelled','Draft') GROUP BY substr(order_date,1,7) ORDER BY name").all() as {name:string;sales:number;orders:number}[],
+    inventory:[{month:new Date().toISOString().slice(0,10),value:rawMaterialValue+finishedGoodsValue}],
+    materialUsage:db.prepare("SELECT m.name,SUM(-l.delta) value FROM inventory_ledger l JOIN materials m ON m.id=l.material_id WHERE l.kind='Manufacturing consumption' GROUP BY m.id ORDER BY value DESC LIMIT 10").all() as {name:string;value:number}[],
+    batches:db.prepare('SELECT status name,COUNT(*) value FROM manufacturing_batches GROUP BY status').all() as {name:string;value:number}[],
   };
 
   return {

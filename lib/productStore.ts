@@ -1,4 +1,4 @@
-﻿import type Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import { decimal, quantity, money } from './production';
 import { z } from 'zod';
 export type ProductRecord = {
@@ -27,6 +27,7 @@ export type ProductRecord = {
   reserved: number;
   available: number;
   consigned: number;
+  image_url?: string;
   image_id?: number;
   images?: { id: number; object_key: string; is_primary: number }[];
   locations?: { location:string; quantity:number; consigned:number; reserved:number; available:number }[];
@@ -90,7 +91,7 @@ export function product(db: Database.Database, id: number): ProductRecord {
   const reserved = (
     db
       .prepare(
-        "SELECT COALESCE(SUM(l.quantity),0) AS n FROM sales_order_lines l JOIN sales_orders o ON o.id=l.order_id WHERE l.product_id=? AND l.fulfilled=0 AND o.status NOT IN ('Cancelled','Fulfilled')",
+        "SELECT COALESCE(SUM(l.quantity),0) AS n FROM sales_order_lines l JOIN sales_orders o ON o.id=l.order_id WHERE l.product_id=? AND l.fulfilled=0 AND o.status NOT IN ('Cancelled','Fulfilled','Draft')",
       )
       .get(id) as { n: number }
   ).n;
@@ -107,7 +108,7 @@ export function product(db: Database.Database, id: number): ProductRecord {
     )
     .all(id) as NonNullable<ProductRecord['images']>;
   const locations=(db.prepare('SELECT * FROM product_locations WHERE product_id=?').all(id) as NonNullable<ProductRecord['locations']>).map(l=>{
-    const r=(db.prepare("SELECT COALESCE(SUM(l.quantity),0) n FROM sales_order_lines l JOIN sales_orders o ON o.id=l.order_id WHERE l.product_id=? AND l.location=? AND l.fulfilled=0 AND o.status NOT IN ('Cancelled','Fulfilled')").get(id,l.location) as {n:number}).n;
+    const r=(db.prepare("SELECT COALESCE(SUM(l.quantity),0) n FROM sales_order_lines l JOIN sales_orders o ON o.id=l.order_id WHERE l.product_id=? AND l.location=? AND l.fulfilled=0 AND o.status NOT IN ('Cancelled','Fulfilled','Draft')").get(id,l.location) as {n:number}).n;
     return {...l,reserved:r,available:quantity(decimal(l.quantity).minus(l.consigned).minus(r))};
   });
   return {
@@ -177,7 +178,7 @@ export function moveStock(
   const reserved = (
     db
       .prepare(
-        "SELECT COALESCE(SUM(l.quantity),0) AS n FROM sales_order_lines l JOIN sales_orders o ON o.id=l.order_id WHERE l.product_id=? AND l.location=? AND l.fulfilled=0 AND o.status NOT IN ('Cancelled','Fulfilled')",
+        "SELECT COALESCE(SUM(l.quantity),0) AS n FROM sales_order_lines l JOIN sales_orders o ON o.id=l.order_id WHERE l.product_id=? AND l.location=? AND l.fulfilled=0 AND o.status NOT IN ('Cancelled','Fulfilled','Draft')",
       )
       .get(p.id, p.location) as { n: number }
   ).n;
@@ -193,7 +194,7 @@ export function moveStock(
     'UPDATE products SET stock_quantity=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
   ).run(quantity(decimal(item.stock_quantity).plus(p.delta)), p.id);
   db.prepare(
-    'INSERT INTO inventory_ledger(product_id,location,delta,balance,kind,reason,reference_type,reference_id,request_key) VALUES (?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO inventory_ledger(product_id,location,delta,balance,kind,reason,reference_type,reference_id,request_key,unit_cost) VALUES (?,?,?,?,?,?,?,?,?,?)',
   ).run(
     p.id,
     p.location,
@@ -204,6 +205,7 @@ export function moveStock(
     p.reference_type ?? null,
     p.reference_id ?? null,
     p.request_key ?? null,
+    item.cost_per_unit,
   );
 }
 const amount = z.coerce.number().finite().nonnegative().max(1e9);
@@ -347,6 +349,8 @@ export function saveProduct(db: Database.Database, input: unknown) {
 export function references(db: Database.Database, id: number) {
   return Object.fromEntries(
     Object.entries({
+      content:'SELECT COUNT(*) n FROM content_products WHERE product_id=?',
+      calendars:"SELECT COUNT(*) n FROM calendar_events WHERE record_type='product' AND record_id=?",
       recipes: 'SELECT COUNT(*) n FROM recipes WHERE product_id=?',
       manufactures:
         'SELECT COUNT(*) n FROM manufacturing_batches WHERE product_id=?',

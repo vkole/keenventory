@@ -1,9 +1,14 @@
 "use client";
+import {CalendarWorkspace} from './CalendarWorkspace';
+import {ReportsWorkspace} from './ReportsWorkspace';
+import {RecipeLibrary} from './RecipeLibrary';
+import {ImportWizard} from './ImportWizard';
 import Link from "next/link";
 import { ScopedManufacturing } from "./ScopedManufacturing";
-import { useState } from "react";
+import { useState,useEffect } from "react";
 import type { DashboardData } from "@/lib/data";
 import { can, featureLabels, type Viewer } from "@/lib/permissions";
+import {RecordDrawer} from "./RecordDrawer";
 import { AccountMenu } from "./AccountMenu";
 import { buttonClass, inputClass, jsonRequest } from "./ProductForm";
 import { ProductActionDialog, ProductChannelHub } from "./ProductActions";
@@ -76,6 +81,8 @@ export function RestrictedWorkspace({
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [form, setForm] = useState<Record<string, string>>({});
+  const [importKind,setImportKind]=useState<'products'|'orders'|null>(null);
+  useEffect(()=>{const selectedModule=new URLSearchParams(window.location.search).get('module');const mapped=selectedModule==='reports'?'reporting':selectedModule==='suppliers'?'vendors':selectedModule;if(mapped&&can(user,mapped))setTab(mapped);},[user]);
   const [editing, setEditing] = useState<number | null>(null);
   const [productAction, setProductAction] = useState<{
     product: ProductRecord;
@@ -83,7 +90,7 @@ export function RestrictedWorkspace({
   } | null>(null);
   const modules = [
     ...Object.keys(collections),
-    "reporting",
+    "reporting", "content", "calendar",
     ...(can(user, "integrations") && can(user, "products")
       ? ["integrations"]
       : []),
@@ -196,7 +203,7 @@ export function RestrictedWorkspace({
             Keen Scents · {user.role}
           </p>
         </aside>
-        <main className="min-w-0 flex-1 p-4 sm:p-8">
+        <RecordDrawer/><main className="min-w-0 flex-1 p-4 sm:p-8">
           <header className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-white p-5">
             <h1 className="text-2xl font-semibold">
               {tab === "dashboard"
@@ -239,6 +246,9 @@ export function RestrictedWorkspace({
             </section>
           ) : (
             <section className="space-y-5 rounded-3xl bg-white p-5">
+              {['products','orders'].includes(tab)&&can(user,tab,'create')&&(tab!=='orders'||can(user,'orderTotals','edit'))&&<button className={buttonClass} onClick={()=>setImportKind(tab as 'products'|'orders')}>Import {tab==='products'?'Products':'Orders'}</button>}
+              {importKind&&<ImportWizard kind={importKind} onClose={()=>setImportKind(null)} onSaved={async()=>setData(await jsonRequest('/api/dashboard'))}/>}
+
               <input
                 className={inputClass}
                 aria-label="Search records"
@@ -246,7 +256,7 @@ export function RestrictedWorkspace({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <div className="overflow-auto">
+              <div className={"overflow-auto "+(["recipes","reporting","content","calendar"].includes(tab)?"hidden":"")}>
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr>
@@ -352,7 +362,11 @@ export function RestrictedWorkspace({
                   }}
                 />
               )}
-              {tab === "reporting" && (
+              {tab === "recipes" && <RecipeLibrary data={data} user={user}/>}
+              {tab === "content" && <CalendarWorkspace user={user} content/>}
+              {tab === "calendar" && <CalendarWorkspace user={user}/>}
+              {tab === "reporting" && <ReportsWorkspace user={user}/>}
+              {false && (
                 <div className="grid gap-3">
                   <h2 className="text-xl">Product Reports</h2>
                   {can(user, "products", "export") &&

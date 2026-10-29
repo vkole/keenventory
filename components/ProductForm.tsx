@@ -1,4 +1,5 @@
 ﻿'use client';
+import {ProductSavedImages} from './ProductSavedImages';
 import { useEffect, useState } from 'react';
 import type { ProductRecord } from '@/lib/productStore';
 import type { ProductInput } from '@/lib/productStore';
@@ -349,6 +350,7 @@ export function ProductForm({
           ))}
         </div>
       </div>
+      {product&&<ProductSavedImages id={product.id}/>}
       {editing && (
         <p className="text-sm text-[#868F9E]">
           Changing product information does not adjust inventory. Use the image

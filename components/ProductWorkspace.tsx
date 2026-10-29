@@ -1,4 +1,5 @@
 ﻿'use client';
+import {ImportWizard} from './ImportWizard';
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardData, Recipe } from '@/lib/data';
 import type { ProductRecord } from '@/lib/productStore';
@@ -156,6 +157,7 @@ export function ProductWorkspace({
     'Available',
     'Sale Price',
   ]);
+  const [advancedImport,setAdvancedImport]=useState(false);
   const [importing, setImporting] = useState(false);
   const [csv, setCsv] = useState('');
   const [importPreview, setImportPreview] = useState<{
@@ -204,6 +206,7 @@ export function ProductWorkspace({
   useEffect(() => {
     setPage(1);
   }, [search, category, status, location, perPage]);
+  useEffect(()=>{const params=new URLSearchParams(window.location.search);if(params.get('module')==='products'&&Number(params.get('record')))open(Number(params.get('record'))).catch(e=>setMessage(e.message));},[]);
   async function open(id: number) {
     setMessage('');
     try {
@@ -377,10 +380,10 @@ export function ProductWorkspace({
       : null;
   const cell = (p: ProductRecord, column: string) =>
     column === 'Product Image' ? (
-      p.image_id ? (
+      p.image_id||p.image_url ? (
         <img
           className="h-12 w-12 rounded-lg object-cover"
-          src={`/api/products/images?id=${p.image_id}`}
+          src={p.image_id?`/api/products/images?id=${p.image_id}`:p.image_url}
           alt={p.name}
         />
       ) : (
@@ -454,7 +457,7 @@ export function ProductWorkspace({
             </button>
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                {p.image_id && (
+                {(p.image_id||p.image_url) && (
                   <img
                     className="h-20 w-20 rounded-xl object-cover"
                     src={`/api/products/images?id=${p.image_id}`}
@@ -963,11 +966,11 @@ export function ProductWorkspace({
               <button
                 className="rounded-xl border px-4 py-2.5"
                 onClick={() => {
-                  setImporting(true);
+                  setAdvancedImport(true);
                   setMessage('');
                 }}
               >
-                Bulk Import
+                Import Products
               </button>
               <button
                 className={buttonClass}
@@ -1263,6 +1266,7 @@ export function ProductWorkspace({
           }}
         />
       )}
+      {advancedImport&&<ImportWizard kind='products' onClose={()=>setAdvancedImport(false)} onSaved={async()=>{await refresh();onRefresh();}}/>}
       {importing && (
         <div
           role="dialog"

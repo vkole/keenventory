@@ -199,7 +199,7 @@ async function handlePOST(request: Request) {
             const reserved = (
               db
                 .prepare(
-                  "SELECT COALESCE(SUM(l.quantity),0) n FROM sales_order_lines l JOIN sales_orders o ON o.id=l.order_id WHERE l.product_id=? AND l.location=? AND l.fulfilled=0 AND o.status NOT IN ('Cancelled','Fulfilled')",
+                  "SELECT COALESCE(SUM(l.quantity),0) n FROM sales_order_lines l JOIN sales_orders o ON o.id=l.order_id WHERE l.product_id=? AND l.location=? AND l.fulfilled=0 AND o.status NOT IN ('Cancelled','Fulfilled','Draft')",
                 )
                 .get(id, loc) as { n: number }
             ).n;
@@ -257,8 +257,8 @@ async function handlePOST(request: Request) {
             if (order.status === 'Cancelled') throw Error('Cancelled orders cannot be fulfilled.');
             if (!line.fulfilled) {
               db.prepare(
-                'UPDATE sales_order_lines SET fulfilled=1 WHERE id=?',
-              ).run(lineId);
+                'UPDATE sales_order_lines SET fulfilled=1,cost_at_sale=? WHERE id=?',
+              ).run(p.cost_per_unit,lineId);
               moveStock(db, {
                 id,
                 location: line.location,
@@ -310,6 +310,7 @@ async function handlePOST(request: Request) {
                 ),
                 id,
               );
+              db.prepare('UPDATE inventory_ledger SET unit_cost=(SELECT cost_per_unit FROM products WHERE id=?) WHERE request_key=?').run(id,`purchase:${lineId}`);
               db.prepare(
                 'UPDATE purchase_order_lines SET received=1 WHERE id=?',
               ).run(lineId);

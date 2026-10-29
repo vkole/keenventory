@@ -118,7 +118,7 @@ export function redact(value: unknown, user: Viewer): unknown {
       !can(user, "orderTotals")
     )
       continue;
-    if (k === "customer" && !can(user, "customers")) continue;
+    if (["customer","customer_email"].includes(k) && !can(user, "customers")) continue;
     if (
       [
         "recipe_snapshot",

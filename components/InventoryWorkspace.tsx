@@ -1,15 +1,20 @@
 'use client';
+import {CalendarWorkspace} from './CalendarWorkspace';
+import {ReportsWorkspace} from './ReportsWorkspace';
+import {ImportWizard} from './ImportWizard';
+import {RecipeLibrary} from './RecipeLibrary';
 import { ProductWorkspace } from './ProductWorkspace';
 import { ProductChannelHub } from './ProductActions';
 import type { ProductRecord } from '@/lib/productStore';
 import { RecipeBuilder, type EditableRecipe } from './RecipeBuilder';
 import { ManufacturingPlanner } from './ManufacturingPlanner';
 import { can, features, type Viewer } from '@/lib/permissions';
+import {RecordDrawer} from './RecordDrawer';
 import { AccountMenu } from './AccountMenu';
 import { RestrictedWorkspace } from './RestrictedWorkspace';
 
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   Area,
   AreaChart,
@@ -57,6 +62,7 @@ const tabs = [
   { id: 'suppliers', label: 'Suppliers & Contacts', icon: Truck },
   { id: 'stocktakes', label: 'Stocktakes', icon: ArrowRightLeft },
   { id: 'adjustments', label: 'Adjustments', icon: AlertTriangle },
+  { id: 'content', label: 'Content Calendar', icon: CalendarDays },
   { id: 'reports', label: 'Reports & Analytics', icon: BarChart3 },
   { id: 'shopify', label: 'Shopify Integration', icon: ShoppingCart },
   { id: 'stockpush', label: 'Stock Push', icon: ArrowRightLeft },
@@ -77,6 +83,8 @@ export function InventoryWorkspace({ initialData, user }: { initialData: Dashboa
 }
 function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Viewer }) {
   const [data, setData] = useState(initialData);
+  const [orderImport,setOrderImport]=useState(false);
+  useEffect(()=>{const selectedModule=new URLSearchParams(window.location.search).get('module');if(tabs.some(t=>t.id===selectedModule))setActiveTab(selectedModule as (typeof tabs)[number]['id']);},[]);
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]['id']>('dashboard');
   const [viewMode, setViewMode] = useState<Record<string, 'list' | 'calendar'>>({
     dashboard: 'list',
@@ -600,57 +608,7 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
   };
 
   const renderCalendarView = (module: 'manufacturing' | 'orders' | 'purchases' | 'stocktakes' | 'products' | 'materials' | 'components') => {
-    const startDay = new Date();
-    startDay.setDate(startDay.getDate() - startDay.getDay() - 7);
-
-    const days = Array.from({ length: 35 }, (_, index) => {
-      const current = new Date(startDay);
-      current.setDate(startDay.getDate() + index);
-      return current;
-    });
-
-    const eventsMap = {
-      manufacturing: data.manufacturingBatches.map((batch) => ({ id: batch.id, title: `Batch #${batch.id}`, date: batch.created_at.slice(0, 10), color: '#000E2D' })),
-      orders: data.salesOrders.map((order) => ({ id: order.id, title: order.customer, date: order.order_date.slice(0, 10), color: '#868F9E' })),
-      purchases: data.purchaseOrders.map((purchase) => ({ id: purchase.id, title: purchase.supplier, date: purchase.order_date.slice(0, 10), color: '#E8C9C9' })),
-      stocktakes: data.stocktakes.map((stocktake) => ({ id: stocktake.id, title: stocktake.inventory_name, date: stocktake.created_at.slice(0, 10), color: '#F4EAE8' })),
-      products: data.products.map((product) => ({ id: product.id, title: product.name, date: product.updated_at.slice(0, 10), color: '#000E2D' })),
-      materials: data.materials.map((material) => ({ id: material.id, title: material.name, date: material.updated_at.slice(0, 10), color: '#868F9E' })),
-      components: data.materials.filter(isComponent).map((material) => ({ id: material.id, title: material.name, date: material.updated_at.slice(0, 10), color: '#E8C9C9' })),
-    } as const;
-
-    return (
-      <div className="card rounded-3xl p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Calendar view</h3>
-          <div className="flex items-center gap-2 text-sm text-[#868F9E]">
-            <button type="button" className="rounded-lg border border-[#E2E1E2] bg-white px-2 py-1">Today</button>
-            <button type="button" className="rounded-lg border border-[#E2E1E2] bg-white px-2 py-1">Previous</button>
-            <button type="button" className="rounded-lg border border-[#E2E1E2] bg-white px-2 py-1">Next</button>
-          </div>
-        </div>
-        <div className="grid grid-cols-7 gap-2 text-center text-xs text-[#868F9E]">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-            <div key={day} className="pb-2 font-semibold">{day}</div>
-          ))}
-          {days.map((date, index) => {
-            const matches = eventsMap[module].filter((event) => event.date === date.toISOString().slice(0, 10));
-            return (
-              <div key={`${date.toISOString()}-${index}`} className="min-h-[110px] rounded-xl border border-[#E2E1E2] bg-[#F4EAE8]/40 p-2 text-left">
-                <div className="mb-2 text-[11px] font-medium text-[#000E2D]">{date.getDate()}</div>
-                <div className="space-y-1">
-                  {matches.slice(0, 2).map((event) => (
-                    <div key={event.id} className="truncate rounded-md px-1.5 py-0.5 text-[10px] text-white" style={{ background: event.color }}>
-                      {event.title}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
+    return <CalendarWorkspace user={user} scope={module}/>;
   };
 
   return (
@@ -666,7 +624,7 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
           </div>
 
           <nav className="space-y-2">
-            {tabs.map(({ id, label, icon: Icon }) => (
+            {tabs.filter(t=>t.id!=='content'||can(user,'content')).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
@@ -682,16 +640,16 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
           </nav>
 
           <div className="mt-auto rounded-2xl bg-white/5 p-4">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-300">Demo mode</p>
-            <p className="mt-2 text-sm text-slate-100">Operations are stored in SQLite and can be expanded to more modules.</p>
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-300">Keen Scents Workspace</p>
+            <p className="mt-2 text-sm text-slate-100">Inventory, production, and content planning in one workspace.</p>
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 p-4 md:p-6 xl:p-8">
+        <RecordDrawer excludeProducts/><main className="min-w-0 flex-1 p-4 md:p-6 xl:p-8">
           <label className="mb-4 grid gap-2 text-sm lg:hidden">
             Module
             <select aria-label="Module" className="rounded-xl border border-[#E2E1E2] bg-white p-3" value={activeTab} onChange={e => { const tab = tabs.find(tab => tab.id === e.target.value); if (tab) setActiveTab(tab.id); }}>
-              {tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
+              {tabs.filter(t=>t.id!=='content'||can(user,'content')).map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
             </select>
           </label>
           <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-[#E2E1E2] bg-white/80 p-4 shadow-soft backdrop-blur md:flex-row md:items-center md:justify-between">
@@ -709,7 +667,7 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
                 <button type="button" onClick={() => setViewMode((current) => ({ ...current, [activeTab]: 'list' }))} className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${viewMode[activeTab] === 'list' ? 'bg-[#000E2D] text-white' : 'text-[#000E2D]'}`}>
                   <List size={14} /> List View
                 </button>
-                <button type="button" onClick={() => setViewMode((current) => ({ ...current, [activeTab]: 'calendar' }))} className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${viewMode[activeTab] === 'calendar' ? 'bg-[#000E2D] text-white' : 'text-[#000E2D]'}`}>
+                <button type="button" disabled={!can(user,'calendar')} onClick={() => setViewMode((current) => ({ ...current, [activeTab]: 'calendar' }))} className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${viewMode[activeTab] === 'calendar' ? 'bg-[#000E2D] text-white' : 'text-[#000E2D]'}`}>
                   <CalendarDays size={14} /> Calendar View
                 </button>
               </div>
@@ -948,10 +906,13 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
             )
           )}
 
-          {activeTab === 'products' && <ProductWorkspace data={data} onRefresh={refreshDashboard} onRecipes={p => { setRecipeSeedProduct(p.id); setActiveTab('recipes'); }} onManufacture={p => { const recipe = data.recipes.find(r => r.product_id === p.id && r.is_active && r.status === 'Active'); if (!recipe) { setRecipeSeedProduct(p.id); setActiveTab('recipes'); return; } setProductionSeed({ recipe, count: recipe.batch_yield }); setActiveTab('manufacturing'); }} />}
-          {activeTab === 'recipes' && <RecipeBuilder productId={recipeSeedProduct} data={data} onRefresh={refreshDashboard} onManufacture={(recipe, count) => { setProductionSeed({ recipe, count }); setActiveTab('manufacturing'); }} />}
+          {activeTab === 'products' && viewMode.products==='calendar' && renderCalendarView('products')}
+          {activeTab === 'products' && viewMode.products!=='calendar' && <ProductWorkspace data={data} onRefresh={refreshDashboard} onRecipes={p => { window.location.assign('/recipes/new?product_id='+p.id); }} onManufacture={p => { const recipe = data.recipes.find(r => r.product_id === p.id && r.is_active && r.status === 'Active'); if (!recipe) { setRecipeSeedProduct(p.id); setActiveTab('recipes'); return; } setProductionSeed({ recipe, count: recipe.batch_yield }); setActiveTab('manufacturing'); }} />}
+          {activeTab === 'recipes' && <RecipeLibrary data={data} user={user}/>}
           {activeTab === 'manufacturing' && (viewMode.manufacturing === 'calendar' ? renderCalendarView('manufacturing') : <ManufacturingPlanner data={data} seed={productionSeed} onRefresh={refreshDashboard} />)}
 
+          {activeTab === 'orders' && <button className='rounded-xl bg-white p-3 mb-3' onClick={()=>setOrderImport(true)}>Import Orders</button>}
+          {orderImport&&<ImportWizard kind='orders' onClose={()=>setOrderImport(false)} onSaved={refreshDashboard}/>}
           {activeTab === 'orders' && (
             viewMode.orders === 'calendar' ? renderCalendarView('orders') : (
             <div className="grid gap-6 xl:grid-cols-[1.3fr_0.8fr]">
@@ -1184,37 +1145,8 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
             </div>
           )}
 
-          {activeTab === 'reports' && (
-            <div className="space-y-6">
-              <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {reportMetrics.map((metric) => (
-                  <div key={metric.label} className="card rounded-2xl p-4">
-                    <p className="text-sm text-[#868F9E]">{metric.label}</p>
-                    <p className="mt-4 table-mono text-2xl font-semibold text-[#000E2D]">{metric.value}</p>
-                  </div>
-                ))}
-              </section>
-
-              <div className="card rounded-3xl p-5">
-                <div className="mb-5 flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Performance overview</h3>
-                  <div className="badge bg-[#F4EAE8] text-[#000E2D]">Sales vs purchases</div>
-                </div>
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data.chartData.sales.map((entry, index) => ({ name: entry.name, sales: entry.sales, purchases: [5400, 6100, 7000, 8200, 9100, 9800][index] }))}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E1E2" />
-                      <XAxis dataKey="name" stroke="#868F9E" />
-                      <YAxis stroke="#868F9E" />
-                      <Tooltip formatter={(value) => currency.format(Number(value ?? 0))} />
-                      <Bar dataKey="sales" fill="#000E2D" radius={[8, 8, 0, 0]} />
-                      <Bar dataKey="purchases" fill="#868F9E" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          )}
+          {activeTab === 'reports' && <ReportsWorkspace user={user}/>}
+          {activeTab === 'content' && <CalendarWorkspace user={user} content/>}
 
           {(activeTab === 'shopify' || activeTab === 'stockpush') && <div className="space-y-5"><div className="card rounded-3xl p-5"><h3 className="mb-4 text-xl font-semibold">Shopify Integration</h3><p>Online sales {currency.format(shopifyMetrics.onlineSales)} ? Orders {shopifyMetrics.orderCount} ? Average order {currency.format(shopifyMetrics.avgOrderValue)}</p></div><ProductChannelHub products={data.products as unknown as ProductRecord[]} onRefresh={refreshDashboard} /></div>}
 

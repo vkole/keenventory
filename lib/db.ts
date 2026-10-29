@@ -3,6 +3,7 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { initializeProducts } from './productStore';
 import { initializeAccess } from './accessSchema';
+import { initializeEnhancements } from './enhancementSchema';
 
 const dataDirectory =
   // Render disks are unavailable during builds. Keep build-time initialization
@@ -400,3 +401,4 @@ export function ensureDatabase() {
 ensureDatabase();
 initializeProducts(db);
 initializeAccess(db);
+initializeEnhancements(db);
