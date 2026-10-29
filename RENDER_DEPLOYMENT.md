@@ -37,6 +37,19 @@ the persistent workspace when the server runs. See
 
 ## Issue the first Owner link
 
+If setup fails, run this in **Render's Shell** first:
+
+```
+node --import tsx scripts/claim-owner.ts --check
+```
+
+This reports missing/invalid configuration fields, checks the database and auth
+provider, and reports whether workspace memberships already exist. It sends no
+email and does not replace invitation links. Passwords and tokens are never
+printed. Locally, use `npm run owner:claim -- --check`; local checks cannot inspect
+Render's environment. Local issuance with an `onrender.com` URL is blocked to
+prevent sending links whose tokens exist only on your computer.
+
 After the deployed server has the correct environment and persistent database,
 run this **in the Render service shell**, using the administrator's real email:
 
