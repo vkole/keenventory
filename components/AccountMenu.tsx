@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { can, type Viewer } from "@/lib/permissions";
 export function AccountMenu({ user }: { user: Viewer }) {
   return (
@@ -7,13 +8,9 @@ export function AccountMenu({ user }: { user: Viewer }) {
         {user.name} · {user.role}
       </summary>
       <div className="absolute right-0 z-50 grid w-56 gap-2 rounded-2xl border bg-white p-4 shadow-xl">
-        <a href="/settings/profile">My Profile</a>
-        <a href="/settings/profile#security">Security Settings</a>
-        {can(user, "account") && (
-          <a href="/settings/profile">Account Settings</a>
-        )}
+        <Link href="/settings/account">Account Settings</Link>
         {can(user, "users") && ["Owner", "Admin"].includes(user.role) && (
-          <a href="/settings/users">User Management</a>
+          <Link href="/settings/users">User Management</Link>
         )}
         <button
           className="text-left text-red-700"

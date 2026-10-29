@@ -10,8 +10,10 @@ type Session = {
   createdAt: string;
   expiresAt: string;
 };
-async function authAction(path:string,body?:unknown){return jsonRequest('/api/auth/'+path,body);}
-export function ProfileWorkspace({ user }: { user: Viewer }) {
+async function authAction(path: string, body?: unknown) {
+  return jsonRequest("/api/auth/" + path, body);
+}
+export function AccountSettingsWorkspace({ user }: { user: Viewer }) {
   const [name, setName] = useState(user.name),
     [notifications, setNotifications] = useState(true),
     [email, setEmail] = useState(user.email),
@@ -27,7 +29,7 @@ export function ProfileWorkspace({ user }: { user: Viewer }) {
     [message, setMessage] = useState(""),
     [image, setImage] = useState(user.image),
     [storage, setStorage] = useState(false);
-  const load=useCallback(async()=> {
+  const load = useCallback(async () => {
     const [p, s, me] = await Promise.all([
       jsonRequest("/api/accounts/profile"),
       authAction("list-sessions"),
@@ -37,7 +39,7 @@ export function ProfileWorkspace({ user }: { user: Viewer }) {
     setSessions(s);
     setEnabled(!!me?.user?.twoFactorEnabled);
     setStorage(!!p.storage);
-  },[]);
+  }, []);
   useEffect(() => {
     load().catch((e) => setMessage(e.message));
   }, [load]);
@@ -75,8 +77,8 @@ export function ProfileWorkspace({ user }: { user: Viewer }) {
   );
   return (
     <section className="space-y-8 rounded-3xl bg-white p-5 sm:p-8">
-      <p className="text-sm text-[#868F9E]">Account Settings &gt; My Profile</p>
-      <h1 className="text-3xl font-semibold">My Profile</h1>
+      <p className="text-sm text-[#868F9E]">Settings &gt; Account Settings</p>
+      <h1 className="text-3xl font-semibold">Account Settings</h1>
       {message && (
         <p role="alert" className="rounded-xl bg-[#F4EAE8] p-3">
           {message}
@@ -97,6 +99,7 @@ export function ProfileWorkspace({ user }: { user: Viewer }) {
           );
         }}
       >
+        <h2 className="text-xl">Profile</h2>
         {label("Display Name", name, setName)}
         <label className="flex items-center gap-2">
           <input
@@ -167,7 +170,7 @@ export function ProfileWorkspace({ user }: { user: Viewer }) {
         )}
       </div>
       <section id="security" className="grid max-w-lg gap-4 border-t pt-6">
-        <h2 className="text-xl">Security Settings</h2>
+        <h2 className="text-xl">Security</h2>
         {label(
           "Current password (required for security changes)",
           password,
@@ -183,7 +186,7 @@ export function ProfileWorkspace({ user }: { user: Viewer }) {
                 authAction("change-email", {
                   newEmail: email,
                   currentPassword: password,
-                  callbackURL: "/settings/profile",
+                  callbackURL: "/settings/account",
                 }),
               "Check your current email address to confirm the change.",
             );

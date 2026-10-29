@@ -56,10 +56,11 @@ owners manage administrative roles. The last active owner cannot be disabled or
 demoted. Access changes revoke sessions immediately. View Only cannot write even
 if an override contains a write action. APIs protect exports and Shopify actions.
 
-`/settings/profile` supports names, email changes with password reauthentication
+`/settings/account` combines profile and security controls: names, email changes with password reauthentication
 and confirmation, password changes, persistent profile images (S3 required),
 notification preferences, authenticator MFA with backup codes, and session
 revocation. Preferences persist; invitation/recovery emails are mandatory.
+The previous `/settings/profile` URL redirects to Account Settings.
 MFA enrollment requires verification of an authenticator code.
 
 Financially restricted users receive a scoped operational workspace. Sensitive
