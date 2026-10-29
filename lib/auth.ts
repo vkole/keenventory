@@ -70,7 +70,14 @@ function authOptions() {
         "/request-password-reset": { window: 300, max: 3 },
       },
     },
-    advanced: { useSecureCookies: appURL().startsWith("https://") },
+    advanced: {
+      useSecureCookies: appURL().startsWith("https://"),
+      // Render's edge supplies a single client address. Do not trust the
+      // leftmost token of X-Forwarded-For, which can include user input.
+      ...(process.env.RENDER === "true"
+        ? { ipAddress: { ipAddressHeaders: ["cf-connecting-ip", "true-client-ip"] } }
+        : {}),
+    },
     plugins: [twoFactor({ issuer: "Keenventory" })],
     databaseHooks: {
       session: {

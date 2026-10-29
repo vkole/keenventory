@@ -5,6 +5,8 @@ Inventory, recipes, manufacturing, and product management backed by SQLite.
 Account setup is required before accessing business data. Follow [ACCOUNTS.md](ACCOUNTS.md)
 to configure authentication/email and send the secure one-time owner activation.
 
+On Render (`RENDER=true`), authentication uses the edge-provided `CF-Connecting-IP` header, with `True-Client-IP` as a fallback, to separate rate limits by client. Other hosts retain Better Auth's default IP handling. No additional Render environment settings are needed for this configuration.
+
 Run `npm install`, then `npm run dev`. Use `npm test` for automated checks and `npm run build` for production. On Windows PowerShell with script execution disabled, use `npm.cmd` in place of `npm`.
 
 Copy `.env.example` to `.env.local` and fill in the integrations you use. Keep the SQLite data directory on persistent storage and back it up before deploying updates. `KEENVENTORY_DATA_DIR` defaults to the project's `data` directory. Product migrations preserve existing records and carry stock into location balances and baseline ledger entries.
