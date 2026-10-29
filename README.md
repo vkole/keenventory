@@ -9,7 +9,11 @@ Run `npm install`, then `npm run dev`. Use `npm test` for automated checks and `
 
 Copy `.env.example` to `.env.local` and fill in the integrations you use. Keep the SQLite data directory on persistent storage and back it up before deploying updates. `KEENVENTORY_DATA_DIR` defaults to the project's `data` directory. Product migrations preserve existing records and carry stock into location balances and baseline ledger entries.
 
-Product images require a private S3-compatible bucket and server credentials. Uploads are validated, resized, and stored as WebP objects; the database keeps associations. Copied products share image references only when requested. Removing one association preserves images used by other products.
+Profile images, product images, and attachments can use the same persistent disk as SQLite. On Render, attach a disk, set `KEENVENTORY_DATA_DIR` to its mount path (for example `/var/data`), and set `KEENVENTORY_MEDIA_STORAGE=disk`. Files are stored privately under `/var/data/uploads` and served through authenticated application routes. Keep your existing data directory if already configured; changing it opens a different database. Back up the entire directory, including uploads and SQLite, together.
+
+Disk storage is the default when S3 credentials are absent. Existing S3 installations continue using S3 unless disk storage is explicitly selected. To use a private S3-compatible bucket instead, set `KEENVENTORY_MEDIA_STORAGE=s3` and configure the `S3_*` settings in `.env.example`. Existing S3 files still require their credentials to read or delete after switching new uploads to disk; files are not automatically migrated.
+
+Image uploads are validated, resized, and stored as WebP files; video attachments retain their validated MP4 or WebM format. The database keeps associations. Copied products share image references only when requested. Removing one association preserves images used by other products.
 
 Configure the Shopify shop domain and Admin API token to enable mapping, inventory previews, pushes, and explicit SKU reconciliation. Select the permanent variant ID and local/remote locations in the Listings tab. Stock Push updates available inventory only. Live storage and Shopify access must be checked with configured services; automated integration tests use local mock servers.
 
