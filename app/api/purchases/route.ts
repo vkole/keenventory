@@ -1,3 +1,4 @@
+import { secured } from '@/lib/access';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, ensureDatabase } from '@/lib/db';
@@ -8,13 +9,13 @@ const purchaseSchema = z.object({
   status: z.string().default('Ordered'),
 });
 
-export async function GET() {
+async function handleGET() {
   ensureDatabase();
   const purchases = db.prepare('SELECT * FROM purchase_orders ORDER BY order_date DESC').all();
   return NextResponse.json({ purchases });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const body = await request.json();
   const payload = purchaseSchema.parse(body);
 
@@ -27,3 +28,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true, id: Number(result.lastInsertRowid) });
 }
+
+export const GET = secured('purchases', handleGET);
+
+export const POST = secured('purchases', handlePOST);

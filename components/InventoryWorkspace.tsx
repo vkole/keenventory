@@ -1,4 +1,13 @@
 'use client';
+import { ProductWorkspace } from './ProductWorkspace';
+import { ProductChannelHub } from './ProductActions';
+import type { ProductRecord } from '@/lib/productStore';
+import { RecipeBuilder, type EditableRecipe } from './RecipeBuilder';
+import { ManufacturingPlanner } from './ManufacturingPlanner';
+import { can, features, type Viewer } from '@/lib/permissions';
+import { AccountMenu } from './AccountMenu';
+import { RestrictedWorkspace } from './RestrictedWorkspace';
+
 
 import { useMemo, useState } from 'react';
 import {
@@ -34,7 +43,7 @@ import {
   Warehouse,
 } from 'lucide-react';
 import type { DashboardData, Material, Product, Recipe, Order, PurchaseOrder } from '@/lib/data';
-import { calculatePricingGuidance, calculateRecipeCosts, getDefaultRecipeName } from '@/lib/recipeCalculations';
+
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
@@ -62,7 +71,11 @@ const currency = new Intl.NumberFormat('en-US', {
 
 const barColors = ['#000E2D', '#868F9E', '#E8C9C9', '#F4EAE8', '#E2E1E2'];
 
-export function InventoryWorkspace({ initialData }: { initialData: DashboardData }) {
+export function InventoryWorkspace({ initialData, user }: { initialData: DashboardData; user:Viewer }) {
+  if(!['products','materials','components','recipes','manufacturing','orders','purchases','vendors','stocktakes','adjustments','reporting','integrations','profitability','productPricing','materialCosts','orderTotals','stockPush','transfers','inventoryExports'].every(f=>features[f].every(a=>can(user,f,a)))) return <RestrictedWorkspace initialData={initialData} user={user}/>;
+  return <FullWorkspace initialData={initialData} user={user}/>;
+}
+function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Viewer }) {
   const [data, setData] = useState(initialData);
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]['id']>('dashboard');
   const [viewMode, setViewMode] = useState<Record<string, 'list' | 'calendar'>>({
@@ -109,66 +122,13 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
     notes: '',
   });
 
-  const [productForm, setProductForm] = useState({
-    name: '',
-    sku: '',
-    category: 'Candle',
-    stock_quantity: '0',
-    cost_per_unit: '0',
-    retail_price: '0',
-    location: 'Finished Goods Storage',
-    state: 'Active',
-    measurement_type: 'Units',
-    low_stock_limit: '0',
-    auto_manufacture: 'No',
-    default_sale_price: '0',
-    sale_quantity: '1',
-    wholesale_price: '0',
-    barcode: '',
-    default_storage_location: 'Finished Goods Storage',
-  });
-
-  const createRecipeLine = (item_name = '', quantity = '1', unit = 'oz', item_type = 'material', unit_cost = '0') => ({
-    item_name,
-    quantity,
-    unit,
-    item_type,
-    unit_cost,
-  });
-
-  const [recipeForm, setRecipeForm] = useState({
-    name: '',
-    product_id: String(data.products[0]?.id ?? 1),
-    version: '1',
-    batch_yield: '1',
-    batch_minutes: '0',
-    hourly_labor_rate: '0',
-    status: 'Draft',
-    instructions: 'Melt wax, add fragrance, pour and cure.',
-    notes: '',
-    ingredients: [
-      createRecipeLine('Candle Wax', '9', 'oz', 'material', '1.05'),
-      createRecipeLine('Fragrance Oil', '1', 'oz', 'material', '2.8'),
-      createRecipeLine('Glass Jar', '1', 'unit', 'component', '2.4'),
-    ],
-  });
-
-  const [manufacturingForm, setManufacturingForm] = useState({
-    code: 'MF-2026-001',
-    recipeId: '1',
-    productId: '1',
-    plannedQuantity: '12',
-    actualQuantity: '12',
-    startDate: new Date().toISOString().slice(0, 10),
-    status: 'Draft',
-    assignee: 'Production Team',
-    completedDate: '',
-    expiryDate: '',
-    deadlineDate: '',
-    totalLaborMinutes: '120',
-    hourlyLaborRate: '24',
-    notes: '',
-  });
+  const isComponent = (item: Material) => /component|jar|lid|wick|label|packaging|box/i.test(item.category + ' ' + item.name) || data.recipes.some(r => r.ingredients.some(i => i.item_type === 'component' && (i.material_id === item.id || i.item_name === item.name)));
+  const [recipeSeedProduct, setRecipeSeedProduct] = useState<number | undefined>();
+  const [productionSeed, setProductionSeed] = useState<{ recipe: EditableRecipe; count: number } | null>(null);
+  async function refreshDashboard() {
+    const response = await fetch('/api/dashboard', { cache: 'no-store' });
+    if (response.ok) setData(await response.json());
+  }
 
   const [stocktakeForm, setStocktakeForm] = useState({
     type: 'Material',
@@ -240,33 +200,6 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
     reason: 'Manufacturing waste',
   });
 
-  const [stockPushForm, setStockPushForm] = useState({
-    productId: String(data.products[0]?.id ?? 1),
-    quantity: '12',
-    channel: 'Shopify',
-  });
-
-  const selectedManufacturingProduct = useMemo(
-    () => data.products.find((product) => String(product.id) === manufacturingForm.productId) ?? data.products[0],
-    [data.products, manufacturingForm.productId]
-  );
-
-  const selectedManufacturingRecipe = useMemo(
-    () => data.recipes.find((recipe) => String(recipe.id) === manufacturingForm.recipeId) ?? data.recipes[0],
-    [data.recipes, manufacturingForm.recipeId]
-  );
-
-  const manufacturingIngredients = useMemo(() => {
-    const recipe = selectedManufacturingRecipe;
-    const multiplier = Number(manufacturingForm.plannedQuantity || 0) || 1;
-    return recipe?.ingredients.map((ingredient) => ({
-      ...ingredient,
-      required: Number(ingredient.quantity) * multiplier,
-      available: data.materials.find((material) => material.name === ingredient.item_name)?.stock_quantity ?? 0,
-      remaining: (data.materials.find((material) => material.name === ingredient.item_name)?.stock_quantity ?? 0) - Number(ingredient.quantity) * multiplier,
-    })) ?? [];
-  }, [data.materials, manufacturingForm.plannedQuantity, selectedManufacturingRecipe]);
-
   const stats = useMemo(
     () => [
       { label: 'Total inventory value', value: currency.format(data.summary.totalInventoryValue), icon: BarChart3 },
@@ -300,45 +233,6 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
         data.salesOrders.filter((order) => order.channel === 'Shopify').length
       : 0,
   }), [data.salesOrders]);
-
-  const recipeCostSummary = useMemo(() => {
-    const items = recipeForm.ingredients.map((row) => ({
-      item_name: row.item_name,
-      quantity: Number(row.quantity || 0),
-      unit: row.unit,
-      item_type: row.item_type,
-      unit_cost: Number(row.unit_cost || 0),
-    }));
-
-    return calculateRecipeCosts({
-      items,
-      batchYield: Number(recipeForm.batch_yield || 1),
-      batchMinutes: Number(recipeForm.batch_minutes || 0),
-      hourlyLaborRate: Number(recipeForm.hourly_labor_rate || 0),
-    });
-  }, [recipeForm.batch_minutes, recipeForm.batch_yield, recipeForm.hourly_labor_rate, recipeForm.ingredients]);
-
-  const recipePricing = useMemo(() => calculatePricingGuidance({
-    costPerUnit: recipeCostSummary.costPerUnit,
-    markup: 150,
-    targetMargin: 50,
-    salesQuantity: 1,
-    sellingFees: 0,
-  }), [recipeCostSummary.costPerUnit]);
-
-  const addRecipeLine = () => {
-    setRecipeForm((current) => ({
-      ...current,
-      ingredients: [...current.ingredients, createRecipeLine('', '1', 'oz', 'material', '0')],
-    }));
-  };
-
-  const updateRecipeLine = (index: number, updates: Partial<typeof recipeForm.ingredients[number]>) => {
-    setRecipeForm((current) => ({
-      ...current,
-      ingredients: current.ingredients.map((row, rowIndex) => (rowIndex === index ? { ...row, ...updates } : row)),
-    }));
-  };
 
   const handleMaterialSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -401,72 +295,6 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
     });
   };
 
-  const handleProductSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const payload = {
-      name: productForm.name,
-      sku: productForm.sku,
-      category: productForm.category,
-      stock_quantity: Number(productForm.stock_quantity),
-      cost_per_unit: Number(productForm.cost_per_unit),
-      retail_price: Number(productForm.retail_price),
-      location: productForm.location,
-    };
-
-    const response = await fetch('/api/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      alert('Product could not be saved.');
-      return;
-    }
-
-    const saved = await response.json();
-    setData((current) => ({
-      ...current,
-      products: [
-        {
-          id: saved.id,
-          name: payload.name,
-          sku: payload.sku,
-          category: payload.category,
-          stock_quantity: payload.stock_quantity,
-          cost_per_unit: payload.cost_per_unit,
-          retail_price: payload.retail_price,
-          location: payload.location,
-          updated_at: new Date().toISOString(),
-        },
-        ...current.products,
-      ],
-      summary: {
-        ...current.summary,
-        activeProducts: current.summary.activeProducts + 1,
-      },
-    }));
-
-    setProductForm({
-      name: '',
-      sku: '',
-      category: 'Candle',
-      stock_quantity: '0',
-      cost_per_unit: '0',
-      retail_price: '0',
-      location: 'Finished Goods Storage',
-      state: 'Active',
-      measurement_type: 'Units',
-      low_stock_limit: '0',
-      auto_manufacture: 'No',
-      default_sale_price: '0',
-      sale_quantity: '1',
-      wholesale_price: '0',
-      barcode: '',
-      default_storage_location: 'Finished Goods Storage',
-    });
-  };
-
   const handleComponentSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -523,144 +351,6 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
       currency: 'USD',
       storage_location: 'Production Area',
       description: '',
-      notes: '',
-    });
-  };
-
-  const handleRecipeSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    const ingredients = recipeForm.ingredients
-      .filter((row) => row.item_name.trim())
-      .map((row) => ({
-        item_name: row.item_name.trim(),
-        quantity: Number(row.quantity || 0),
-        unit: row.unit || 'oz',
-        item_type: row.item_type || 'material',
-      }));
-
-    const selectedProductId = Number(recipeForm.product_id || data.products[0]?.id || 1);
-    const recipeName = getDefaultRecipeName(
-      data.products.find((product) => product.id === selectedProductId)?.name ?? 'Product',
-      recipeForm.name
-    );
-
-    const response = await fetch('/api/recipes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: recipeName,
-        product_id: selectedProductId,
-        version: Number(recipeForm.version || 1),
-        batch_yield: Number(recipeForm.batch_yield || 1),
-        batch_minutes: Number(recipeForm.batch_minutes || 0),
-        hourly_labor_rate: Number(recipeForm.hourly_labor_rate || 0),
-        status: recipeForm.status,
-        instructions: recipeForm.instructions,
-        notes: recipeForm.notes,
-        ingredients,
-      }),
-    });
-
-    if (!response.ok) {
-      alert('Recipe could not be saved.');
-      return;
-    }
-
-    const created = await response.json();
-    const newRecipe: Recipe = {
-      id: created.id,
-      name: recipeName,
-      product_id: selectedProductId,
-      version: Number(recipeForm.version || 1),
-      batch_yield: Number(recipeForm.batch_yield || 1),
-      batch_minutes: Number(recipeForm.batch_minutes || 0),
-      hourly_labor_rate: Number(recipeForm.hourly_labor_rate || 0),
-      status: recipeForm.status,
-      instructions: recipeForm.instructions,
-      notes: recipeForm.notes,
-      is_active: recipeForm.status === 'Active',
-      created_at: new Date().toISOString(),
-      ingredients,
-    };
-
-    setData((current) => ({
-      ...current,
-      recipes: [newRecipe, ...current.recipes.filter((recipe) => recipe.id !== created.id)],
-    }));
-
-    setRecipeForm({
-      name: '',
-      product_id: String(data.products[0]?.id ?? 1),
-      version: '1',
-      batch_yield: '1',
-      batch_minutes: '0',
-      hourly_labor_rate: '0',
-      status: 'Draft',
-      instructions: 'Melt wax, add fragrance, pour and cure.',
-      notes: '',
-      ingredients: [
-        createRecipeLine('Candle Wax', '9', 'oz', 'material', '1.05'),
-        createRecipeLine('Fragrance Oil', '1', 'oz', 'material', '2.8'),
-        createRecipeLine('Glass Jar', '1', 'unit', 'component', '2.4'),
-      ],
-    });
-  };
-
-  const handleManufacturingSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const response = await fetch('/api/manufacturing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        product_id: Number(manufacturingForm.productId),
-        recipe_id: Number(manufacturingForm.recipeId),
-        planned_quantity: Number(manufacturingForm.plannedQuantity),
-        actual_quantity: Number(manufacturingForm.actualQuantity),
-        status: manufacturingForm.status,
-        start_date: manufacturingForm.startDate,
-        assignee: manufacturingForm.assignee,
-        notes: manufacturingForm.notes,
-      }),
-    });
-
-    if (!response.ok) {
-      alert('Batch creation failed.');
-      return;
-    }
-
-    const created = await response.json();
-    setData((current) => ({
-      ...current,
-      manufacturingBatches: [
-        {
-          id: created.id,
-          product_id: Number(manufacturingForm.productId),
-          recipe_id: Number(manufacturingForm.recipeId),
-          status: manufacturingForm.status,
-          planned_quantity: Number(manufacturingForm.plannedQuantity),
-          completed_quantity: Number(manufacturingForm.actualQuantity),
-          created_at: new Date().toISOString(),
-          completed_at: manufacturingForm.completedDate || null,
-        },
-        ...current.manufacturingBatches,
-      ],
-    }));
-
-    setManufacturingForm({
-      code: 'MF-2026-001',
-      recipeId: '1',
-      productId: '1',
-      plannedQuantity: '12',
-      actualQuantity: '12',
-      startDate: new Date().toISOString().slice(0, 10),
-      status: 'Draft',
-      assignee: 'Production Team',
-      completedDate: '',
-      expiryDate: '',
-      deadlineDate: '',
-      totalLaborMinutes: '120',
-      hourlyLaborRate: '24',
       notes: '',
     });
   };
@@ -909,17 +599,6 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
     });
   };
 
-  const handleStockPushSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    const product = data.products.find((item) => String(item.id) === stockPushForm.productId);
-    if (!product) {
-      alert('Please select a valid product.');
-      return;
-    }
-
-    alert(`${stockPushForm.quantity} units of ${product.name} will be pushed to ${stockPushForm.channel}.`);
-  };
-
   const renderCalendarView = (module: 'manufacturing' | 'orders' | 'purchases' | 'stocktakes' | 'products' | 'materials' | 'components') => {
     const startDay = new Date();
     startDay.setDate(startDay.getDate() - startDay.getDay() - 7);
@@ -937,7 +616,7 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
       stocktakes: data.stocktakes.map((stocktake) => ({ id: stocktake.id, title: stocktake.inventory_name, date: stocktake.created_at.slice(0, 10), color: '#F4EAE8' })),
       products: data.products.map((product) => ({ id: product.id, title: product.name, date: product.updated_at.slice(0, 10), color: '#000E2D' })),
       materials: data.materials.map((material) => ({ id: material.id, title: material.name, date: material.updated_at.slice(0, 10), color: '#868F9E' })),
-      components: data.materials.filter((material) => material.category === 'Component').map((material) => ({ id: material.id, title: material.name, date: material.updated_at.slice(0, 10), color: '#E8C9C9' })),
+      components: data.materials.filter(isComponent).map((material) => ({ id: material.id, title: material.name, date: material.updated_at.slice(0, 10), color: '#E8C9C9' })),
     } as const;
 
     return (
@@ -1008,14 +687,20 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
           </div>
         </aside>
 
-        <main className="flex-1 p-4 md:p-6 xl:p-8">
+        <main className="min-w-0 flex-1 p-4 md:p-6 xl:p-8">
+          <label className="mb-4 grid gap-2 text-sm lg:hidden">
+            Module
+            <select aria-label="Module" className="rounded-xl border border-[#E2E1E2] bg-white p-3" value={activeTab} onChange={e => { const tab = tabs.find(tab => tab.id === e.target.value); if (tab) setActiveTab(tab.id); }}>
+              {tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
+            </select>
+          </label>
           <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-[#E2E1E2] bg-white/80 p-4 shadow-soft backdrop-blur md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#868F9E]">Operations Overview</p>
               <h2 className="mt-2 text-3xl font-semibold text-[#000E2D]">Keenventory Dashboard</h2>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2 rounded-xl border border-[#E2E1E2] bg-[#F4EAE8] px-3 py-2 text-sm text-[#000E2D]">
                 <Search size={16} />
                 <span>Search inventory</span>
@@ -1031,7 +716,7 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
               <button type="button" className="rounded-xl bg-[#000E2D] p-2 text-white">
                 <Bell size={18} />
               </button>
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#E8C9C9] font-semibold text-[#000E2D]">KS</div>
+              <AccountMenu user={user}/>
             </div>
           </header>
 
@@ -1213,7 +898,7 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
               <div className="card rounded-3xl p-5">
                 <div className="mb-5 flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Component inventory</h3>
-                  <span className="badge bg-[#F4EAE8] text-[#000E2D]">{data.materials.filter((item) => item.category === 'Component').length} records</span>
+                  <span className="badge bg-[#F4EAE8] text-[#000E2D]">{data.materials.filter(isComponent).length} records</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
@@ -1226,7 +911,7 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
                       </tr>
                     </thead>
                     <tbody>
-                      {data.materials.filter((item) => item.category === 'Component').map((item: Material) => (
+                      {data.materials.filter(isComponent).map((item: Material) => (
                         <tr key={item.id} className="border-b border-[#F4EAE8] last:border-0">
                           <td className="py-3 pr-4 font-medium">{item.name}</td>
                           <td className="py-3 pr-4 text-[#868F9E]">{item.sku}</td>
@@ -1263,263 +948,9 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
             )
           )}
 
-          {activeTab === 'products' && (
-            <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-              <div className="card rounded-3xl p-5">
-                <div className="mb-5 flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Finished goods</h3>
-                  <span className="badge bg-[#E8C9C9] text-[#000E2D]">{data.products.length} SKUs</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-[#E2E1E2] text-[#868F9E]">
-                      <tr>
-                        <th className="pb-3 pr-4">Product</th>
-                        <th className="pb-3 pr-4">SKU</th>
-                        <th className="pb-3 pr-4">Stock</th>
-                        <th className="pb-3 pr-4">Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.products.map((product: Product) => (
-                        <tr key={product.id} className="border-b border-[#F4EAE8] last:border-0">
-                          <td className="py-3 pr-4 font-medium">{product.name}</td>
-                          <td className="py-3 pr-4 text-[#868F9E]">{product.sku}</td>
-                          <td className="table-mono py-3 pr-4">{product.stock_quantity}</td>
-                          <td className="table-mono py-3 pr-4">{currency.format(product.retail_price)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="mt-5 rounded-2xl border border-[#E2E1E2] bg-[#F4EAE8]/50 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h4 className="text-lg font-semibold text-[#000E2D]">Recipe</h4>
-                    <button type="button" className="rounded-lg bg-[#000E2D] px-3 py-1.5 text-sm font-medium text-white">+ Create Recipe</button>
-                  </div>
-                  {data.recipes.length > 0 ? (() => {
-                    const selected = data.recipes[0];
-                    const summary = calculateRecipeCosts({
-                      items: selected.ingredients.map((ingredient) => ({
-                        item_name: ingredient.item_name,
-                        quantity: Number(ingredient.quantity || 0),
-                        unit: ingredient.unit,
-                        item_type: ingredient.item_type,
-                        unit_cost: Number((data.materials.find((material) => material.name === ingredient.item_name)?.cost_per_unit ?? 0)),
-                      })),
-                      batchYield: Number(selected.batch_yield || 1),
-                      batchMinutes: Number(selected.batch_minutes || 0),
-                      hourlyLaborRate: Number(selected.hourly_labor_rate || 0),
-                    });
-                    return (
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between"><span className="text-[#868F9E]">Recipe</span><strong>{selected.name}</strong></div>
-                        <div className="flex items-center justify-between"><span className="text-[#868F9E]">Version</span><span>v{selected.version}</span></div>
-                        <div className="flex items-center justify-between"><span className="text-[#868F9E]">Batch yield</span><span>{selected.batch_yield}</span></div>
-                        <div className="flex items-center justify-between"><span className="text-[#868F9E]">Material cost</span><span className="table-mono">{currency.format(summary.materialCost)}</span></div>
-                        <div className="flex items-center justify-between"><span className="text-[#868F9E]">Labor cost</span><span className="table-mono">{currency.format(summary.laborCost)}</span></div>
-                        <div className="flex items-center justify-between"><span className="text-[#868F9E]">Cost per unit</span><span className="table-mono">{currency.format(summary.costPerUnit)}</span></div>
-                      </div>
-                    );
-                  })() : <p className="text-sm text-[#868F9E]">No recipe has been created for this product.</p>}
-                </div>
-              </div>
-
-              <form onSubmit={handleProductSubmit} className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">Add product</h3>
-                <div className="grid gap-3">
-                  <input value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} placeholder="Product name" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  <input value={productForm.sku} onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })} placeholder="SKU" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="number" value={productForm.stock_quantity} onChange={(e) => setProductForm({ ...productForm, stock_quantity: e.target.value })} placeholder="Stock" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                    <input type="number" step="0.01" value={productForm.retail_price} onChange={(e) => setProductForm({ ...productForm, retail_price: e.target.value })} placeholder="Retail price" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="number" step="0.01" value={productForm.cost_per_unit} onChange={(e) => setProductForm({ ...productForm, cost_per_unit: e.target.value })} placeholder="Cost" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                    <input value={productForm.location} onChange={(e) => setProductForm({ ...productForm, location: e.target.value })} placeholder="Location" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  </div>
-                  <button type="submit" className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-[#000E2D] p-3 font-medium text-white">
-                    <Plus size={16} /> Add product
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {activeTab === 'recipes' && (
-            <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-              <div className="card rounded-3xl p-5">
-                <div className="mb-5 flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Recipe library</h3>
-                  <button type="button" className="inline-flex items-center gap-2 rounded-xl bg-[#000E2D] px-3 py-2 text-sm font-medium text-white">
-                    <Plus size={16} /> Create Recipe
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-[#E2E1E2] text-[#868F9E]">
-                      <tr>
-                        <th className="pb-3 pr-4">Recipe</th>
-                        <th className="pb-3 pr-4">Version</th>
-                        <th className="pb-3 pr-4">Yield</th>
-                        <th className="pb-3 pr-4">Batch Cost</th>
-                        <th className="pb-3 pr-4">Per Unit</th>
-                        <th className="pb-3 pr-4">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.recipes.map((recipe: Recipe) => {
-                        const recipeSummary = calculateRecipeCosts({
-                          items: recipe.ingredients.map((ingredient) => ({
-                            item_name: ingredient.item_name,
-                            quantity: Number(ingredient.quantity || 0),
-                            unit: ingredient.unit,
-                            item_type: ingredient.item_type,
-                            unit_cost: Number((data.materials.find((material) => material.name === ingredient.item_name)?.cost_per_unit ?? 0)),
-                          })),
-                          batchYield: Number(recipe.batch_yield || 1),
-                          batchMinutes: Number(recipe.batch_minutes || 0),
-                          hourlyLaborRate: Number(recipe.hourly_labor_rate || 0),
-                        });
-
-                        return (
-                          <tr key={recipe.id} className="border-b border-[#F4EAE8] last:border-0">
-                            <td className="py-3 pr-4 font-medium">{recipe.name}</td>
-                            <td className="py-3 pr-4">v{recipe.version}</td>
-                            <td className="py-3 pr-4">{recipe.batch_yield}</td>
-                            <td className="table-mono py-3 pr-4">{currency.format(recipeSummary.totalBatchCost)}</td>
-                            <td className="table-mono py-3 pr-4">{currency.format(recipeSummary.costPerUnit)}</td>
-                            <td className="py-3 pr-4"><span className="badge bg-[#F4EAE8] text-[#000E2D]">{recipe.status || 'Draft'}</span></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <form onSubmit={handleRecipeSubmit} className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">New Recipe</h3>
-
-                <div className="grid gap-3">
-                  <input value={recipeForm.name} onChange={(e) => setRecipeForm({ ...recipeForm, name: e.target.value })} placeholder="Recipe name (optional)" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-
-                  <select value={recipeForm.product_id} onChange={(e) => setRecipeForm({ ...recipeForm, product_id: e.target.value })} className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none">
-                    {data.products.map((product: Product) => (
-                      <option key={product.id} value={product.id}>{product.name}</option>
-                    ))}
-                  </select>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="number" min="1" value={recipeForm.batch_yield} onChange={(e) => setRecipeForm({ ...recipeForm, batch_yield: e.target.value })} placeholder="Batch yield" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                    <select value={recipeForm.status} onChange={(e) => setRecipeForm({ ...recipeForm, status: e.target.value })} className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none">
-                      <option value="Draft">Draft</option>
-                      <option value="Active">Active</option>
-                      <option value="Archived">Archived</option>
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="number" value={recipeForm.batch_minutes} onChange={(e) => setRecipeForm({ ...recipeForm, batch_minutes: e.target.value })} placeholder="Batch minutes" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                    <input type="number" step="0.01" value={recipeForm.hourly_labor_rate} onChange={(e) => setRecipeForm({ ...recipeForm, hourly_labor_rate: e.target.value })} placeholder="Hourly labor rate" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  </div>
-
-                  <div className="rounded-2xl border border-[#E2E1E2] bg-[#F4EAE8]/60 p-3">
-                    <p className="text-xs uppercase tracking-[0.2em] text-[#868F9E]">Manufacture Summary</p>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                      <div><span className="text-[#868F9E]">Labor</span><div className="table-mono font-semibold">{currency.format(recipeCostSummary.laborCost)}</div></div>
-                      <div><span className="text-[#868F9E]">Materials</span><div className="table-mono font-semibold">{currency.format(recipeCostSummary.materialCost)}</div></div>
-                      <div><span className="text-[#868F9E]">Total batch</span><div className="table-mono font-semibold">{currency.format(recipeCostSummary.totalBatchCost)}</div></div>
-                      <div><span className="text-[#868F9E]">Per unit</span><div className="table-mono font-semibold">{currency.format(recipeCostSummary.costPerUnit)}</div></div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-semibold text-[#000E2D]">Materials</h4>
-                      <button type="button" onClick={addRecipeLine} className="inline-flex items-center gap-1 rounded-lg border border-[#E2E1E2] bg-white px-2 py-1 text-sm text-[#000E2D]">
-                        <Plus size={14} /> Add material
-                      </button>
-                    </div>
-
-                    {recipeForm.ingredients.map((row, index) => (
-                      <div key={`${row.item_name}-${index}`} className="grid grid-cols-[1.4fr_0.7fr_0.7fr_0.8fr_0.8fr] gap-2 rounded-xl border border-[#E2E1E2] bg-white p-2">
-                        <input value={row.item_name} onChange={(e) => updateRecipeLine(index, { item_name: e.target.value })} placeholder="Material name" className="rounded-lg border border-[#E2E1E2] bg-[#F4EAE8] p-2 outline-none" />
-                        <input type="number" value={row.quantity} onChange={(e) => updateRecipeLine(index, { quantity: e.target.value })} placeholder="Qty" className="rounded-lg border border-[#E2E1E2] bg-[#F4EAE8] p-2 outline-none" />
-                        <input value={row.unit} onChange={(e) => updateRecipeLine(index, { unit: e.target.value })} placeholder="Unit" className="rounded-lg border border-[#E2E1E2] bg-[#F4EAE8] p-2 outline-none" />
-                        <input type="number" step="0.01" value={row.unit_cost} onChange={(e) => updateRecipeLine(index, { unit_cost: e.target.value })} placeholder="Cost" className="rounded-lg border border-[#E2E1E2] bg-[#F4EAE8] p-2 outline-none" />
-                        <button type="button" onClick={() => setRecipeForm((current) => ({ ...current, ingredients: current.ingredients.filter((_, rowIndex) => rowIndex !== index) }))} className="rounded-lg border border-[#E2E1E2] bg-white px-2 py-1 text-sm text-[#000E2D]">Remove</button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <textarea value={recipeForm.notes} onChange={(e) => setRecipeForm({ ...recipeForm, notes: e.target.value })} placeholder="Manufacturing notes and instructions" className="min-h-[100px] rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-
-                  <div className="rounded-2xl border border-[#E2E1E2] bg-[#E8C9C9]/20 p-3">
-                    <p className="text-xs uppercase tracking-[0.2em] text-[#868F9E]">Pricing guidance</p>
-                    <div className="mt-2 flex items-center justify-between text-sm">
-                      <span>Suggested retail</span>
-                      <span className="table-mono font-semibold">{currency.format(recipePricing.suggestedPrice)}</span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between text-sm">
-                      <span>Gross margin</span>
-                      <span className="table-mono font-semibold">{recipePricing.grossMargin.toFixed(1)}%</span>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button type="submit" className="flex-1 rounded-xl bg-[#000E2D] p-3 font-medium text-white">Save Recipe</button>
-                    <button type="button" className="rounded-xl border border-[#E2E1E2] bg-white px-4 py-3 font-medium text-[#000E2D]">Cancel</button>
-                  </div>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {activeTab === 'manufacturing' && (
-            viewMode.manufacturing === 'calendar' ? renderCalendarView('manufacturing') : (
-            <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-              <div className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">Manufacturing batches</h3>
-                <div className="space-y-3">
-                  {data.manufacturingBatches.map((batch) => (
-                    <div key={batch.id} className="rounded-2xl border border-[#E2E1E2] p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold">Batch #{batch.id}</p>
-                          <p className="text-xs text-[#868F9E]">Planned: {batch.planned_quantity} units</p>
-                        </div>
-                        <span className="badge bg-[#F4EAE8] text-[#000E2D]">{batch.status}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <form onSubmit={handleManufacturingSubmit} className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">Create batch</h3>
-                <div className="grid gap-3">
-                  <select value={manufacturingForm.productId} onChange={(e) => setManufacturingForm({ ...manufacturingForm, productId: e.target.value })} className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none">
-                    {data.products.map((product: Product) => (
-                      <option key={product.id} value={product.id}>{product.name}</option>
-                    ))}
-                  </select>
-                  <select value={manufacturingForm.recipeId} onChange={(e) => setManufacturingForm({ ...manufacturingForm, recipeId: e.target.value })} className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none">
-                    {data.recipes.map((recipe: Recipe) => (
-                      <option key={recipe.id} value={recipe.id}>{recipe.name}</option>
-                    ))}
-                  </select>
-                  <input type="number" value={manufacturingForm.plannedQuantity} onChange={(e) => setManufacturingForm({ ...manufacturingForm, plannedQuantity: e.target.value })} placeholder="Planned quantity" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  <button type="submit" className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-[#000E2D] p-3 font-medium text-white">
-                    <Plus size={16} /> Start batch
-                  </button>
-                </div>
-              </form>
-            </div>
-            )
-          )}
+          {activeTab === 'products' && <ProductWorkspace data={data} onRefresh={refreshDashboard} onRecipes={p => { setRecipeSeedProduct(p.id); setActiveTab('recipes'); }} onManufacture={p => { const recipe = data.recipes.find(r => r.product_id === p.id && r.is_active && r.status === 'Active'); if (!recipe) { setRecipeSeedProduct(p.id); setActiveTab('recipes'); return; } setProductionSeed({ recipe, count: recipe.batch_yield }); setActiveTab('manufacturing'); }} />}
+          {activeTab === 'recipes' && <RecipeBuilder productId={recipeSeedProduct} data={data} onRefresh={refreshDashboard} onManufacture={(recipe, count) => { setProductionSeed({ recipe, count }); setActiveTab('manufacturing'); }} />}
+          {activeTab === 'manufacturing' && (viewMode.manufacturing === 'calendar' ? renderCalendarView('manufacturing') : <ManufacturingPlanner data={data} seed={productionSeed} onRefresh={refreshDashboard} />)}
 
           {activeTab === 'orders' && (
             viewMode.orders === 'calendar' ? renderCalendarView('orders') : (
@@ -1785,87 +1216,7 @@ export function InventoryWorkspace({ initialData }: { initialData: DashboardData
             </div>
           )}
 
-          {activeTab === 'shopify' && (
-            <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-              <div className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">Shopify sync status</h3>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-2xl bg-[#F4EAE8] p-4">
-                    <p className="text-sm text-[#868F9E]">Online sales</p>
-                    <p className="mt-3 table-mono text-2xl font-semibold text-[#000E2D]">{currency.format(shopifyMetrics.onlineSales)}</p>
-                  </div>
-                  <div className="rounded-2xl bg-[#F4EAE8] p-4">
-                    <p className="text-sm text-[#868F9E]">Order count</p>
-                    <p className="mt-3 table-mono text-2xl font-semibold text-[#000E2D]">{shopifyMetrics.orderCount}</p>
-                  </div>
-                  <div className="rounded-2xl bg-[#F4EAE8] p-4">
-                    <p className="text-sm text-[#868F9E]">Avg order</p>
-                    <p className="mt-3 table-mono text-2xl font-semibold text-[#000E2D]">{currency.format(shopifyMetrics.avgOrderValue)}</p>
-                  </div>
-                </div>
-                <div className="mt-6 rounded-2xl border border-[#E2E1E2] p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold">Last sync</p>
-                      <p className="text-sm text-[#868F9E]">15 minutes ago</p>
-                    </div>
-                    <span className="badge bg-[#E8C9C9] text-[#000E2D]">Healthy</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">Sync policy</h3>
-                <div className="space-y-3 text-sm text-[#000E2D]">
-                  <div className="flex justify-between rounded-xl border border-[#E2E1E2] bg-[#F4EAE8] p-3"><span>Ownership</span><span className="font-semibold">Keenventory</span></div>
-                  <div className="flex justify-between rounded-xl border border-[#E2E1E2] bg-[#F4EAE8] p-3"><span>Mode</span><span className="font-semibold">Bidirectional</span></div>
-                  <div className="flex justify-between rounded-xl border border-[#E2E1E2] bg-[#F4EAE8] p-3"><span>Inventory sync</span><span className="font-semibold">Enabled</span></div>
-                  <div className="flex justify-between rounded-xl border border-[#E2E1E2] bg-[#F4EAE8] p-3"><span>Webhook status</span><span className="font-semibold text-emerald-600">Live</span></div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'stockpush' && (
-            <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-              <div className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">Pending inventory pushes</h3>
-                <div className="space-y-3">
-                  {data.products.map((product) => (
-                    <div key={product.id} className="rounded-2xl border border-[#E2E1E2] p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold">{product.name}</p>
-                          <p className="text-xs text-[#868F9E]">{product.stock_quantity} units available</p>
-                        </div>
-                        <span className="badge bg-[#E8C9C9] text-[#000E2D]">Ready</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <form onSubmit={handleStockPushSubmit} className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">Push inventory</h3>
-                <div className="grid gap-3">
-                  <select value={stockPushForm.productId} onChange={(e) => setStockPushForm({ ...stockPushForm, productId: e.target.value })} className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none">
-                    {data.products.map((product) => (
-                      <option key={product.id} value={String(product.id)}>{product.name}</option>
-                    ))}
-                  </select>
-                  <input type="number" value={stockPushForm.quantity} onChange={(e) => setStockPushForm({ ...stockPushForm, quantity: e.target.value })} placeholder="Quantity" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  <select value={stockPushForm.channel} onChange={(e) => setStockPushForm({ ...stockPushForm, channel: e.target.value })} className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none">
-                    <option>Shopify</option>
-                    <option>Wholesale Portal</option>
-                    <option>Retail POS</option>
-                  </select>
-                  <button type="submit" className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-[#000E2D] p-3 font-medium text-white">
-                    <Plus size={16} /> Preview push
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
+          {(activeTab === 'shopify' || activeTab === 'stockpush') && <div className="space-y-5"><div className="card rounded-3xl p-5"><h3 className="mb-4 text-xl font-semibold">Shopify Integration</h3><p>Online sales {currency.format(shopifyMetrics.onlineSales)} ? Orders {shopifyMetrics.orderCount} ? Average order {currency.format(shopifyMetrics.avgOrderValue)}</p></div><ProductChannelHub products={data.products as unknown as ProductRecord[]} onRefresh={refreshDashboard} /></div>}
 
           {activeTab === 'settings' && (
             <div className="grid gap-6 xl:grid-cols-2">

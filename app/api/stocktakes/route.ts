@@ -1,3 +1,4 @@
+import { secured } from '@/lib/access';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, ensureDatabase } from '@/lib/db';
@@ -8,13 +9,13 @@ const stocktakeSchema = z.object({
   actual_quantity: z.coerce.number(),
 });
 
-export async function GET() {
+async function handleGET() {
   ensureDatabase();
   const stocktakes = db.prepare('SELECT * FROM stocktakes ORDER BY created_at DESC').all();
   return NextResponse.json({ stocktakes });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const body = await request.json();
   const payload = stocktakeSchema.parse(body);
 
@@ -32,3 +33,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true, id: Number(result.lastInsertRowid), system_quantity: systemQuantity, variance });
 }
+
+export const GET = secured('stocktakes', handleGET);
+
+export const POST = secured('stocktakes', handlePOST);

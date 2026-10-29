@@ -1,4 +1,6 @@
 import { db, ensureDatabase } from '@/lib/db';
+import { inventory } from '@/lib/manufacturing';
+import { products as managedProducts } from '@/lib/productStore';
 
 export type Material = {
   id: number;
@@ -11,9 +13,12 @@ export type Material = {
   reorder_threshold: number;
   location: string;
   updated_at: string;
+  reserved_quantity?: number;
 };
 
 export type Product = {
+  archived_at?: string | null;
+  state?: string;
   id: number;
   name: string;
   sku: string;
@@ -38,7 +43,12 @@ export type Recipe = {
   notes: string | null;
   is_active: boolean;
   created_at: string;
-  ingredients: { item_name: string; quantity: number; unit: string; item_type: string }[];
+  product_variant?: string;
+  measurement_unit?: string;
+  labor_mode?: string;
+  labor_reference_yield?: number;
+  overhead?: number;
+  ingredients: { material_id?: number; item_name: string; quantity: number; unit: string; item_type: string }[];
 };
 
 export type ManufacturingBatch = {
@@ -139,8 +149,8 @@ function toCurrency(value: number) {
 export async function getDashboardData(): Promise<DashboardData> {
   ensureDatabase();
 
-  const materials = db.prepare('SELECT * FROM materials ORDER BY name ASC').all() as Material[];
-  const products = db.prepare('SELECT * FROM products ORDER BY name ASC').all() as Product[];
+  const materials = inventory(db).sort((a, b) => a.name.localeCompare(b.name)) as Material[];
+  const products = managedProducts(db) as Product[];
   const recipes = db.prepare('SELECT * FROM recipes ORDER BY created_at DESC').all() as Array<{
     id: number;
     name: string;
@@ -180,7 +190,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const rawMaterialValue = materials.reduce((sum, material) => sum + material.stock_quantity * material.cost_per_unit, 0);
   const finishedGoodsValue = products.reduce((sum, product) => sum + product.stock_quantity * product.cost_per_unit, 0);
 
-  const activeProducts = products.length;
+  const activeProducts = products.filter(p => !p.archived_at && p.state === 'Active').length;
   const materialSkus = materials.length;
   const lowStockItems = materials.filter((item) => item.stock_quantity <= item.reorder_threshold).length;
   const outOfStockItems = materials.filter((item) => item.stock_quantity <= 0).length;

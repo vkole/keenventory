@@ -1,3 +1,4 @@
+﻿import { decimal, money, pricing } from './production';
 export type RecipeIngredientInput = {
   item_name: string;
   quantity: number;
@@ -5,36 +6,48 @@ export type RecipeIngredientInput = {
   item_type?: string;
   unit_cost?: number;
 };
-
 export function calculateRecipeCosts({
   items,
   batchYield,
   batchMinutes,
   hourlyLaborRate,
+  laborMode = 'fixed',
+  laborReferenceYield = 1,
+  overhead = 0,
 }: {
   items: RecipeIngredientInput[];
   batchYield: number;
   batchMinutes: number;
   hourlyLaborRate: number;
+  laborMode?: string;
+  laborReferenceYield?: number;
+  overhead?: number;
 }) {
-  const materialCost = items.reduce((sum, item) => {
-    const quantity = Number(item.quantity || 0);
-    const unitCost = Number(item.unit_cost || 0);
-    return sum + quantity * unitCost;
-  }, 0);
-
-  const laborCost = batchMinutes > 0 && hourlyLaborRate > 0 ? (batchMinutes / 60) * hourlyLaborRate : 0;
-  const totalBatchCost = materialCost + laborCost;
-  const costPerUnit = batchYield > 0 ? totalBatchCost / batchYield : 0;
-
+  const material = items.reduce(
+    (sum, item) =>
+      sum.plus(
+        decimal(item.quantity)
+          .times(item.unit_cost ?? 0)
+          .times(batchYield),
+      ),
+    decimal(0),
+  );
+  const minutes = decimal(batchMinutes).times(
+    laborMode === 'per_unit'
+      ? batchYield
+      : laborMode === 'scaled'
+        ? decimal(batchYield).div(laborReferenceYield || 1)
+        : 1,
+  );
+  const labor = minutes.div(60).times(hourlyLaborRate);
+  const total = material.plus(labor).plus(overhead);
   return {
-    materialCost,
-    laborCost,
-    totalBatchCost,
-    costPerUnit,
+    materialCost: money(material),
+    laborCost: money(labor),
+    totalBatchCost: money(total),
+    costPerUnit: batchYield > 0 ? money(total.div(batchYield)) : 0,
   };
 }
-
 export function calculatePricingGuidance({
   costPerUnit,
   markup,
@@ -48,23 +61,20 @@ export function calculatePricingGuidance({
   salesQuantity: number;
   sellingFees: number;
 }) {
-  const costPrice = costPerUnit * (salesQuantity || 1);
-  const markupPrice = costPrice * (1 + (markup || 0) / 100);
-  const marginPrice = costPrice / (1 - (targetMargin || 0) / 100);
-  const suggestedPrice = Number.isFinite(markupPrice) ? markupPrice : 0;
-  const grossProfit = suggestedPrice - costPrice - (sellingFees || 0);
-  const grossMargin = suggestedPrice > 0 ? ((suggestedPrice - costPrice) / suggestedPrice) * 100 : 0;
-
+  const costPrice = money(decimal(costPerUnit).times(salesQuantity || 1));
+  const result = pricing(costPrice, 0, markup, targetMargin, 'markup');
   return {
     costPrice,
-    markupPrice,
-    marginPrice,
-    suggestedPrice,
-    grossProfit,
-    grossMargin,
+    markupPrice: result.markupPrice,
+    marginPrice: result.marginPrice ?? 0,
+    suggestedPrice: result.suggested ?? 0,
+    grossProfit: money(decimal(result.estimatedProfit ?? 0).minus(sellingFees)),
+    grossMargin: result.estimatedMargin,
   };
 }
-
-export function getDefaultRecipeName(productName: string, providedName?: string) {
-  return providedName && providedName.trim() ? providedName.trim() : productName.trim() || 'Recipe';
+export function getDefaultRecipeName(
+  productName: string,
+  providedName?: string,
+) {
+  return providedName?.trim() || productName.trim() || 'Recipe';
 }

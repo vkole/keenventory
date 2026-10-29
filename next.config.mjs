@@ -1,8 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    typedRoutes: false,
+  typedRoutes: false,
+  logging: {
+    incomingRequests: {
+      ignore: [
+        /^\/accept-invitation(?:\?|$)/,
+        /^\/reset-password(?:\?|$)/,
+        /^\/api\/auth\/(?:verify-email|reset-password)(?:\/|\?|$)/,
+      ],
+    },
   },
 };
 

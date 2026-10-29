@@ -1,8 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
+import { initializeProducts } from './productStore';
+import { initializeAccess } from './accessSchema';
 
-const dataDirectory = path.join(process.cwd(), 'data');
+const dataDirectory =
+  // Render disks are unavailable during builds. Keep build-time initialization
+  // separate from the persistent workspace and never seed/migrate live data then.
+  process.env.NEXT_PHASE === 'phase-production-build'
+    ? path.join(process.cwd(), '.next', 'build-data')
+    : process.env.KEENVENTORY_DATA_DIR || path.join(process.cwd(), 'data');
 fs.mkdirSync(dataDirectory, { recursive: true });
 
 const dbPath = path.join(dataDirectory, 'keenventory.db');
@@ -124,119 +131,272 @@ db.exec(`
   );
 `);
 
+// Additive migrations preserve existing inventory and historical batches.
+db.transaction(() => {
+  for (const [table, columns] of Object.entries({
+    recipes: {
+      product_variant: "TEXT NOT NULL DEFAULT ''",
+      measurement_unit: "TEXT NOT NULL DEFAULT 'candles'",
+      labor_mode: "TEXT NOT NULL DEFAULT 'fixed'",
+      labor_reference_yield: 'REAL NOT NULL DEFAULT 1',
+      overhead: 'REAL NOT NULL DEFAULT 0',
+    },
+    recipe_items: { material_id: 'INTEGER' },
+    manufacturing_batches: {
+      request_key: 'TEXT',
+      recipe_snapshot: 'TEXT',
+      consumption: 'TEXT',
+      actual_minutes: 'REAL NOT NULL DEFAULT 0',
+      hourly_labor_rate: 'REAL NOT NULL DEFAULT 0',
+      actual_cost: 'REAL NOT NULL DEFAULT 0',
+    },
+  })) {
+    const existing = db.prepare(`PRAGMA table_info(${table})`).all() as {
+      name: string;
+    }[];
+    for (const [column, definition] of Object.entries(columns)) {
+      if (!existing.some((c) => c.name === column))
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+  }
+  db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS manufacturing_request_key ON manufacturing_batches(request_key)',
+  );
+  db.exec(
+    `UPDATE recipe_items SET material_id = (SELECT id FROM materials WHERE materials.name = recipe_items.item_name) WHERE material_id IS NULL`,
+  );
+}).immediate();
+
 export function ensureDatabase() {
-  const count = db.prepare('SELECT COUNT(*) as count FROM materials').get() as { count: number };
-
-  if (count.count > 0) return;
-
   const seedTx = db.transaction(() => {
+    const count = db
+      .prepare('SELECT COUNT(*) as count FROM materials')
+      .get() as { count: number };
+    if (count.count > 0) return;
     db.prepare(
       `INSERT INTO materials (name, sku, category, unit, stock_quantity, cost_per_unit, reorder_threshold, location)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run('Candle Wax', 'MAT-WAX-001', 'Candle Wax', 'oz', 412, 1.05, 120, 'Main Storage');
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'Candle Wax',
+      'MAT-WAX-001',
+      'Candle Wax',
+      'oz',
+      412,
+      1.05,
+      120,
+      'Main Storage',
+    );
 
     db.prepare(
       `INSERT INTO materials (name, sku, category, unit, stock_quantity, cost_per_unit, reorder_threshold, location)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run('Fragrance Oil', 'MAT-FRAG-001', 'Fragrance Oils', 'oz', 146, 2.8, 80, 'Main Storage');
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'Fragrance Oil',
+      'MAT-FRAG-001',
+      'Fragrance Oils',
+      'oz',
+      146,
+      2.8,
+      80,
+      'Main Storage',
+    );
 
     db.prepare(
       `INSERT INTO materials (name, sku, category, unit, stock_quantity, cost_per_unit, reorder_threshold, location)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run('Glass Jar', 'MAT-JAR-001', 'Candle Jars', 'unit', 84, 2.4, 30, 'Main Storage');
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'Glass Jar',
+      'MAT-JAR-001',
+      'Candle Jars',
+      'unit',
+      84,
+      2.4,
+      30,
+      'Main Storage',
+    );
 
     db.prepare(
       `INSERT INTO materials (name, sku, category, unit, stock_quantity, cost_per_unit, reorder_threshold, location)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run('Cotton Wick', 'MAT-WICK-001', 'Wicks', 'unit', 180, 0.55, 50, 'Production Area');
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'Cotton Wick',
+      'MAT-WICK-001',
+      'Wicks',
+      'unit',
+      180,
+      0.55,
+      50,
+      'Production Area',
+    );
 
     db.prepare(
       `INSERT INTO materials (name, sku, category, unit, stock_quantity, cost_per_unit, reorder_threshold, location)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run('Candle Lid', 'MAT-LID-001', 'Candle Lids', 'unit', 92, 0.75, 35, 'Production Area');
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'Candle Lid',
+      'MAT-LID-001',
+      'Candle Lids',
+      'unit',
+      92,
+      0.75,
+      35,
+      'Production Area',
+    );
 
     db.prepare(
       `INSERT INTO products (name, sku, category, stock_quantity, cost_per_unit, retail_price, location)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run('Blaque Candle', 'PRD-BLAQUE-01', 'Candle', 28, 8.14, 28, 'Finished Goods Storage');
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'Blaque Candle',
+      'PRD-BLAQUE-01',
+      'Candle',
+      28,
+      8.14,
+      28,
+      'Finished Goods Storage',
+    );
 
     db.prepare(
       `INSERT INTO products (name, sku, category, stock_quantity, cost_per_unit, retail_price, location)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run('Sakura Candle', 'PRD-SAKURA-01', 'Candle', 18, 7.96, 26, 'Finished Goods Storage');
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'Sakura Candle',
+      'PRD-SAKURA-01',
+      'Candle',
+      18,
+      7.96,
+      26,
+      'Finished Goods Storage',
+    );
 
     db.prepare(
       `INSERT INTO recipes (name, product_id, version, batch_yield, batch_minutes, hourly_labor_rate, status, instructions, notes, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run('Blaque Candle Formula', 1, 1, 12, 45, 8, 'Active', 'Melt wax, add fragrance, pour into jar and apply wick.', 'Use 10% fragrance load and cure 24 hours.', 1);
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'Blaque Candle Formula',
+      1,
+      1,
+      12,
+      45,
+      8,
+      'Active',
+      'Melt wax, add fragrance, pour into jar and apply wick.',
+      'Use 10% fragrance load and cure 24 hours.',
+      1,
+    );
 
     db.prepare(
       `INSERT INTO recipe_items (recipe_id, item_name, quantity, unit, item_type)
-       VALUES (?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?)`,
     ).run(1, 'Candle Wax', 9, 'oz', 'material');
 
     db.prepare(
       `INSERT INTO recipe_items (recipe_id, item_name, quantity, unit, item_type)
-       VALUES (?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?)`,
     ).run(1, 'Fragrance Oil', 1, 'oz', 'material');
 
     db.prepare(
       `INSERT INTO recipe_items (recipe_id, item_name, quantity, unit, item_type)
-       VALUES (?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?)`,
     ).run(1, 'Glass Jar', 1, 'unit', 'component');
 
     db.prepare(
       `INSERT INTO recipe_items (recipe_id, item_name, quantity, unit, item_type)
-       VALUES (?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?)`,
     ).run(1, 'Cotton Wick', 1, 'unit', 'component');
 
     db.prepare(
       `INSERT INTO recipe_items (recipe_id, item_name, quantity, unit, item_type)
-       VALUES (?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?)`,
     ).run(1, 'Candle Lid', 1, 'unit', 'component');
 
     db.prepare(
       `INSERT INTO manufacturing_batches (product_id, recipe_id, status, planned_quantity, completed_quantity, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(1, 1, 'Completed', 12, 12, new Date(Date.now() - 2 * 86400000).toISOString());
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      1,
+      1,
+      'Completed',
+      12,
+      12,
+      new Date(Date.now() - 2 * 86400000).toISOString(),
+    );
 
     db.prepare(
       `INSERT INTO purchase_orders (supplier, status, order_date, total_cost, expected_delivery)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run('North Peak Supplies', 'Received', new Date(Date.now() - 4 * 86400000).toISOString(), 420, new Date(Date.now() - 1 * 86400000).toISOString());
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(
+      'North Peak Supplies',
+      'Received',
+      new Date(Date.now() - 4 * 86400000).toISOString(),
+      420,
+      new Date(Date.now() - 1 * 86400000).toISOString(),
+    );
 
     db.prepare(
       `INSERT INTO sales_orders (customer, order_date, status, total, channel)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run('Luna & Co.', new Date(Date.now() - 2 * 86400000).toISOString(), 'Fulfilled', 164, 'Shopify');
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(
+      'Luna & Co.',
+      new Date(Date.now() - 2 * 86400000).toISOString(),
+      'Fulfilled',
+      164,
+      'Shopify',
+    );
 
     db.prepare(
       `INSERT INTO sales_orders (customer, order_date, status, total, channel)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run('Moss Atelier', new Date(Date.now() - 5 * 86400000).toISOString(), 'Pending', 102, 'Wholesale');
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run(
+      'Moss Atelier',
+      new Date(Date.now() - 5 * 86400000).toISOString(),
+      'Pending',
+      102,
+      'Wholesale',
+    );
 
     db.prepare(
       `INSERT INTO adjustments (item_name, quantity, reason)
-       VALUES (?, ?, ?)`
+       VALUES (?, ?, ?)`,
     ).run('Fragrance Oil', -3, 'Production waste');
 
     db.prepare(
       `INSERT INTO suppliers (company_name, contact_name, email, phone, website, lead_time, payment_terms, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run('North Peak Supplies', 'Alyssa Chen', 'alyssa@northpeak.com', '(555) 214-6611', 'northpeak.com', '5 days', 'Net 30', 'Primary wax and fragrance supplier');
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'North Peak Supplies',
+      'Alyssa Chen',
+      'alyssa@northpeak.com',
+      '(555) 214-6611',
+      'northpeak.com',
+      '5 days',
+      'Net 30',
+      'Primary wax and fragrance supplier',
+    );
 
     db.prepare(
       `INSERT INTO suppliers (company_name, contact_name, email, phone, website, lead_time, payment_terms, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run('Hearth & Glass Co.', 'Nathan Bell', 'nathan@hearthglass.co', '(555) 780-2016', 'hearthglass.co', '7 days', 'Net 14', 'Jar and lid sourcing partner');
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'Hearth & Glass Co.',
+      'Nathan Bell',
+      'nathan@hearthglass.co',
+      '(555) 780-2016',
+      'hearthglass.co',
+      '7 days',
+      'Net 14',
+      'Jar and lid sourcing partner',
+    );
 
     db.prepare(
       `INSERT INTO stocktakes (location, inventory_name, system_quantity, actual_quantity, variance, status)
-       VALUES (?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?)`,
     ).run('Main Storage', 'Glass Jar', 90, 86, -4, 'Approved');
   });
 
-  seedTx();
+  seedTx.immediate();
 }
 
 ensureDatabase();
+initializeProducts(db);
+initializeAccess(db);

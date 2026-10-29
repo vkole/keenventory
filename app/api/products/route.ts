@@ -1,41 +1,40 @@
+import { secured } from '@/lib/access';
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { db, ensureDatabase } from '@/lib/db';
-
-const productSchema = z.object({
-  name: z.string().min(1),
-  sku: z.string().min(1),
-  category: z.string().default('Candle'),
-  stock_quantity: z.coerce.number().default(0),
-  cost_per_unit: z.coerce.number().default(0),
-  retail_price: z.coerce.number().default(0),
-  location: z.string().default('Finished Goods Storage'),
-});
-
-export async function GET() {
-  ensureDatabase();
-  const products = db.prepare('SELECT * FROM products ORDER BY name ASC').all();
-  return NextResponse.json({ products });
-}
-
-export async function POST(request: Request) {
-  const body = await request.json();
-  const payload = productSchema.parse(body);
-
-  const result = db
-    .prepare(
-      `INSERT INTO products (name, sku, category, stock_quantity, cost_per_unit, retail_price, location)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      payload.name,
-      payload.sku,
-      payload.category,
-      payload.stock_quantity,
-      payload.cost_per_unit,
-      payload.retail_price,
-      payload.location,
+import { db } from '@/lib/db';
+import { product, productDetail, products, saveProduct } from '@/lib/productStore';
+export const dynamic = 'force-dynamic';
+async function handleGET(request: Request) {
+  try {
+    const id = new URL(request.url).searchParams.get('id');
+    return NextResponse.json(
+      id ? productDetail(db, Number(id)) : { products: products(db) },
     );
-
-  return NextResponse.json({ ok: true, id: Number(result.lastInsertRowid) });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : 'Product query failed.' },
+      { status: 400 },
+    );
+  }
 }
+async function handlePOST(request: Request) {
+  try {
+    const body=await request.json();
+    const previous=body.id?product(db,Number(body.id)):null;
+    const id = saveProduct(db, previous?{
+      ...previous,
+      attributes:JSON.parse(previous.attributes),
+      auto_manufacture:!!previous.auto_manufacture,
+      ...body,
+    }:body);
+    return NextResponse.json({ ok: true, id });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : 'Product save failed.' },
+      { status: 400 },
+    );
+  }
+}
+
+export const GET = secured('products', handleGET);
+
+export const POST = secured('products', handlePOST);

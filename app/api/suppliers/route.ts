@@ -1,3 +1,4 @@
+import { secured } from '@/lib/access';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, ensureDatabase } from '@/lib/db';
@@ -13,13 +14,13 @@ const supplierSchema = z.object({
   notes: z.string().default(''),
 });
 
-export async function GET() {
+async function handleGET() {
   ensureDatabase();
   const suppliers = db.prepare('SELECT * FROM suppliers ORDER BY company_name ASC').all();
   return NextResponse.json({ suppliers });
 }
 
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const body = await request.json();
   const payload = supplierSchema.parse(body);
 
@@ -41,3 +42,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true, id: Number(result.lastInsertRowid) });
 }
+
+export const GET = secured('vendors', handleGET);
+
+export const POST = secured('vendors', handlePOST);
