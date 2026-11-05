@@ -1,8 +1,9 @@
 import {db} from './db';
+import {generateMaterialSku,validateMaterialSku} from './materialSku';
 import {unitCostMicros} from './unitCosts';
 import Decimal from 'decimal.js';
 import {inventory} from './manufacturing';
-import {materialInput,stockStatus} from './materialValidation';
+import {materialSaveInput,stockStatus} from './materialValidation';
 export function material(id:number): Record<string,any> {
  const m=db.prepare('SELECT * FROM materials WHERE id=?').get(id) as Record<string,any>|undefined;
  if(!m) throw Error('Material not found.');
@@ -12,9 +13,23 @@ export function material(id:number): Record<string,any> {
  return {...m,reserved_quantity:reserved,available_quantity:available,stock_status:stockStatus(available,m.reorder_threshold),barcodes:(db.prepare('SELECT * FROM material_barcodes WHERE material_id=? ORDER BY id').all(id) as Record<string,unknown>[]).map(b=>({...b,active:!!b.active})),images:db.prepare('SELECT id,is_primary,created_at FROM material_images WHERE material_id=? ORDER BY is_primary DESC,id').all(id)};
 }
 export function saveMaterial(input:unknown,id?:number) {
- const p=materialInput.parse(input);
+ const {sku_mode,confirm_sku_change,...p}=materialSaveInput.parse(input);
  return db.transaction(()=>{
   const existing=id?material(id):null;
+  // This immediate transaction serializes allocation and insertion across connections.
+  // The workspace database enforces organization_id=1 for all inventory records.
+  const skuTaken=(sku:string)=>!!db.prepare('SELECT id FROM materials WHERE organization_id=1 AND sku=? COLLATE NOCASE AND id<>? LIMIT 1').get(sku,id??0);
+  if((!existing && (sku_mode==='auto'||sku_mode==='regenerate'||(!sku_mode&&!p.sku))) || (existing&&sku_mode==='regenerate')){
+   const base=generateMaterialSku(p.name);if(!base)throw Error('Enter a material name containing letters or numbers, or edit the SKU manually.');
+   let candidate=base;let sequence=2;
+   while(skuTaken(candidate))candidate=base+'-'+String(sequence++).padStart(3,'0');
+   p.sku=candidate;
+  }else if(existing&&!p.sku&&sku_mode!=='manual'){p.sku=existing.sku;}
+  if(!existing||p.sku!==existing.sku){
+   p.sku=validateMaterialSku(p.sku);
+   if(existing&&p.sku!==existing.sku&&confirm_sku_change!==true)throw Error('Confirm the SKU change. External integrations, printed labels, and imported spreadsheets may be affected.');
+   if(skuTaken(p.sku))throw Error('This SKU is already used by another material in your organization. Choose another SKU or regenerate it.');
+  }
   if(existing && (existing.unit!==p.unit || existing.location!==p.location) && (existing.stock_quantity!==0 || db.prepare('SELECT id FROM inventory_ledger WHERE material_id=? LIMIT 1').get(id))) throw Error('Tracking unit and location cannot change after stock history exists.');
   if(p.supplier_id && !db.prepare('SELECT id FROM suppliers WHERE id=?').get(p.supplier_id)) throw Error('Supplier not found.');
   const {barcodes,stock_quantity,...fields}=p;

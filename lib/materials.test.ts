@@ -1,3 +1,4 @@
+import {generateMaterialSku,validateMaterialSku} from './materialSku';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
@@ -10,6 +11,11 @@ import {parseUnitCost,unitCostMicros,decimalDraft} from './unitCosts';
 import {planProduction} from './production';
 import {calculateRecipeCosts} from './recipeCalculations';
 import {stockStatus,safeSupplierURL} from './materialValidation';
+test('material SKU normalization and manual validation',()=>{
+ for(const [name,sku] of [['Soy Wax','MAT-SOY-WAX'],['Blaque Fragrance Oil','MAT-BLAQUE-FRAGRANCE-OIL'],['Cotton Wick','MAT-COTTON-WICK'],['12 oz Glass Jar','MAT-12OZ-GLASS-JAR'],['  Soy -- & Wax!  ','MAT-SOY-WAX'],['Caf'+String.fromCharCode(233)+' Wax','MAT-CAFE-WAX'],['1.5 lb Wax','MAT-1.5LB-WAX'],['8 fl oz Bottle','MAT-8FLOZ-BOTTLE'],['',''],['   ',''],['!!!','']])assert.equal(generateMaterialSku(name),sku);
+ assert.equal(validateMaterialSku(' custom_SKU.1 '),'custom_SKU.1');
+ for(const sku of ['', 'bad sku','bad/sku','<script>', 'a'.repeat(129)])assert.throws(()=>validateMaterialSku(sku));
+});
 test('six-decimal unit costs accept editing states and calculate full precision',()=>{
  for(const v of ['0.18','0.075','0.0045','1.25','12.99','125.50','0.1875','0.000001'])assert.equal(parseUnitCost(v).toNumber(),Number(v));
  for(const v of ['0.','.','1.','125.50'])assert.equal(decimalDraft(v),true);
@@ -76,6 +82,27 @@ test('materials, barcodes, image persistence, adjustments and permissions integr
  const made=createBatch(db,{request_key:randomUUID(),recipe_id:recipeId,product_id:productId,planned_quantity:1});
  completeBatch(db,{id:made,actual_quantity:1,actual_minutes:0,hourly_labor_rate:0,consumption:[{material_id:wax,quantity:108}]});
  assert.equal((db.prepare('SELECT actual_cost FROM manufacturing_batches WHERE id=?').get(made) as {actual_cost:number}).actual_cost,20.25);
+
+ const generated=await Promise.all(Array.from({length:3},()=>route.POST(request('/api/materials',{name:'Concurrent Soy Wax',sku:'MAT-CONCURRENT-SOY-WAX',sku_mode:'auto'}))));
+ const allocated=await Promise.all(generated.map(async res=>{assert.equal(res.status,200);return (await res.json()).sku;}));
+ assert.deepEqual([...allocated].sort(),['MAT-CONCURRENT-SOY-WAX','MAT-CONCURRENT-SOY-WAX-002','MAT-CONCURRENT-SOY-WAX-003']);
+ const custom=saveMaterial({name:'Custom Oil',sku:'my-CUSTOM-oil',sku_mode:'manual'});assert.equal(material(custom).sku,'my-CUSTOM-oil');
+ assert.throws(()=>saveMaterial({name:'Custom Oil 2',sku:'MY-custom-OIL',sku_mode:'manual'}),/already used/);
+ const noSku=saveMaterial({name:'No SKU Supplied'});assert.equal(material(noSku).sku,'MAT-NO-SKU-SUPPLIED');
+ const legacy=saveMaterial({name:'Legacy SKU Material'});db.prepare('UPDATE materials SET sku=? WHERE id=?').run(' legacy / label ',legacy);
+ saveMaterial({...material(legacy),name:'Renamed legacy material'},legacy);assert.equal(material(legacy).sku,' legacy / label ');
+ assert.throws(()=>saveMaterial({...material(custom),sku:'',sku_mode:'manual',confirm_sku_change:true},custom),/Enter a SKU/);
+ const previousSku=material(id).sku;const previousBarcodes=material(id).barcodes;const ledgerBefore=db.prepare('SELECT * FROM inventory_ledger WHERE material_id=?').all(id);
+ saveMaterial({...material(id),name:'Renamed Fragrance'},id);assert.equal(material(id).sku,previousSku);
+ assert.throws(()=>saveMaterial({...material(id),sku:'EXPLICIT-CHANGE'},id),/Confirm the SKU change/);assert.equal(material(id).sku,previousSku);
+ saveMaterial({...material(id),sku:'EXPLICIT-CHANGE',confirm_sku_change:true},id);assert.equal(material(id).sku,'EXPLICIT-CHANGE');
+ assert.deepEqual(material(id).barcodes,previousBarcodes);assert.deepEqual(db.prepare('SELECT * FROM inventory_ledger WHERE material_id=?').all(id),ledgerBefore);
+ assert.equal((await (await barcode.POST(request('/api/barcode',{value:p.barcodes[0].value}))).json()).material.id,id);
+ const qr2=(await (await qrRoute.POST(request('/api/materials/codes',{material_id:id}))).json()).code;
+ saveMaterial({...material(id),sku_mode:'regenerate',confirm_sku_change:true},id);assert.equal(material(id).sku,'MAT-RENAMED-FRAGRANCE');
+ assert.equal((await (await barcode.POST(request('/api/barcode',{value:qr2.value}))).json()).material.id,id);
+ assert.deepEqual(db.prepare('SELECT * FROM inventory_ledger WHERE material_id=?').all(id),ledgerBefore);
+ assert.equal((db.prepare('SELECT material_id FROM recipe_items WHERE recipe_id=?').get(recipeId) as {material_id:number}).material_id,wax);
  const user=db.prepare("SELECT user_id FROM organization_memberships WHERE role='Owner'").get() as {user_id:string};db.prepare("UPDATE organization_memberships SET role='View Only',permissions=? WHERE user_id=?").run(JSON.stringify({materials:['view']}),user.user_id);
  assert.equal((await qrRoute.POST(request('/api/materials/codes',{material_id:id}))).status,403);assert.equal((await adjust.POST(request('/api/materials/adjust',{...adjustment,request_key:randomUUID()}))).status,403);assert.equal((await route.PATCH(request('/api/materials',{...p,id},'PATCH'))).status,403);assert.equal((await (await route.GET(new TestRequest('http://localhost/api/materials?id='+id))).json()).material.purchase_price,undefined);
  }finally{db.close();rmSync(folder,{recursive:true,force:true});}

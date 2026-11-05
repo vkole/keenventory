@@ -95,3 +95,29 @@ Browser verification now covers actual EAN-13 and QR image decoding, QR generati
 live QR decoding with a synthetic Chromium camera video, decimal editing and reload,
 and an unknown untrusted URL. Physical phone permissions/camera quality and real
 USB/Bluetooth scanner hardware still require acceptance testing on target devices.
+
+Automatic material SKUs
+-----------------------
+Create Material and recipe material creation now show a name-derived SKU directly
+below Material Name. Example: 12 oz Glass Jar -> MAT-12OZ-GLASS-JAR. Name changes
+update the preview immediately until Edit SKU Manually is selected. Regenerate SKU
+returns new materials to automatic mode. Custom SKUs preserve user-entered case and
+accept letters, numbers, hyphens, underscores and periods (maximum 128 characters).
+
+The server recomputes automatic new-material SKUs and allocates duplicates as -002,
+-003, etc. Allocation and insertion run inside the same SQLite immediate transaction,
+so concurrent creates cannot reserve the same SKU. Checks include archived materials
+and ignore case, within the current organization (this application enforces the
+single organization_id=1 workspace). The existing database UNIQUE constraint remains.
+Manual duplicate SKUs produce a clear error instead of changing the supplied value.
+
+Existing SKUs are never migrated or regenerated on name edits. Edit SKU Manually and
+Regenerate SKU are explicit options. Saving a changed existing SKU displays an
+integration/label/spreadsheet warning and requires confirmation, which the backend
+also checks. The internal material ID, inventory quantities, ledger, recipes and
+registered barcode/QR associations are retained. Legacy unchanged SKU values remain
+accepted even if they predate the current custom-SKU format rules.
+
+The material-save API accepts sku_mode=auto|manual|regenerate. For backward
+compatibility, a supplied SKU without a mode remains manual; an omitted new-material
+SKU is generated. Successful creates and edits return the final allocated sku.

@@ -10,10 +10,11 @@ export function safeSupplierURL(value:string) {
 const text=z.string().trim().max(4000);
 const amount=z.coerce.number().finite().nonnegative();
 export const materialInput=z.object({
-  name:text.min(1),sku:text.min(1),category:text.default('Miscellaneous Materials'),unit:text.min(1).default('oz'),
+  name:text.min(1),sku:z.string().max(4000).default(''),category:text.default('Miscellaneous Materials'),unit:text.min(1).default('oz'),
   stock_quantity:amount.default(0),cost_per_unit:unitCostSchema.default(0),reorder_threshold:amount.default(0),location:text.min(1).default('Main Storage'),
   description:text.default(''),supplier_id:z.number().int().positive().nullable().default(null),supplier_name:text.default(''),supplier_website:text.transform(safeSupplierURL).default(''),product_url:text.transform(safeSupplierURL).default(''),supplier_sku:text.default(''),purchase_unit:text.default(''),purchase_quantity:amount.default(1),purchase_price:unitCostSchema.default(0),preferred_reorder_quantity:amount.default(0),lead_time_days:amount.int().default(0),notes:text.default(''),
   barcodes:z.array(z.object({id:z.number().int().positive().optional(),active:z.boolean().default(true),value:z.string().trim().min(1).max(2048).regex(/^[\x20-\x7e]+$/),type:z.enum(barcodeTypes),package_quantity:z.coerce.number().finite().positive(),package_unit:text.min(1)})).max(50).default([]),
 });
+export const materialSaveInput=materialInput.extend({sku_mode:z.enum(['auto','manual','regenerate']).optional(),confirm_sku_change:z.boolean().optional()});
 export type MaterialInput=z.infer<typeof materialInput>;
 export function stockStatus(quantity:number,threshold:number) {return quantity<=0?'Out of Stock':quantity<=threshold?'Low Stock':'In Stock';}

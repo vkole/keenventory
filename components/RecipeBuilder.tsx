@@ -1,4 +1,6 @@
 ﻿"use client";
+import {MaterialSkuFields} from './MaterialSkuFields';
+import {validateMaterialSku,type MaterialSkuMode} from '@/lib/materialSku';
 import {DecimalCostInput} from './DecimalCostInput';
 import {formatUnitCost,parseUnitCost} from '@/lib/unitCosts';
 import { can, type Viewer } from "@/lib/permissions";
@@ -122,6 +124,7 @@ export function RecipeBuilder({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [newSkuMode,setNewSkuMode]=useState<MaterialSkuMode>('auto');
   const [newMaterial, setNewMaterial] = useState({
     name: "",
     sku: "",
@@ -178,7 +181,7 @@ export function RecipeBuilder({
       const response = await fetch("/api/recipes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
+        body: JSON.stringify({sku_mode:newSkuMode,...(
           costEdit
             ? { ...form, copy_from: duplicate ? initialRecipe?.id : undefined }
             : Object.fromEntries(
@@ -188,8 +191,8 @@ export function RecipeBuilder({
                 }).filter(
                   ([k]) => !["hourly_labor_rate", "overhead"].includes(k),
                 ),
-              ),
-        ),
+              )
+        )}),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error);
@@ -222,26 +225,16 @@ export function RecipeBuilder({
   async function createMaterial() {
     setBusy(true);
     try {
+      if(newSkuMode==='manual')validateMaterialSku(newMaterial.sku);
       if(costEdit)parseUnitCost(newMaterial.cost_per_unit);
       if (!newMaterial.name.trim() || !newMaterial.sku.trim())
         throw new Error("Enter a material name and SKU.");
       const response = await fetch("/api/materials", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          costEdit
-            ? newMaterial
-            : Object.fromEntries(
-                Object.entries(newMaterial).filter(
-                  ([k]) => k !== "cost_per_unit",
-                ),
-              ),
-        ),
+        body: JSON.stringify({...newMaterial,...(costEdit?{}:{cost_per_unit:undefined}),sku_mode:newSkuMode}),
       });
-      if (!response.ok)
-        throw new Error(
-          "Material could not be created. Check the SKU is unique.",
-        );
+      if (!response.ok)throw new Error((await response.json()).error??"Material could not be created.");
       await refreshStock();
       onRefresh();
       setShowNew(false);
@@ -539,26 +532,7 @@ export function RecipeBuilder({
         </button>
         {showNew && (
           <div className="grid gap-3 rounded-xl bg-[#F4EAE8] p-4 sm:grid-cols-3">
-            <label>
-              Name
-              <input
-                className={field}
-                value={newMaterial.name}
-                onChange={(e) =>
-                  setNewMaterial({ ...newMaterial, name: e.target.value })
-                }
-              />
-            </label>
-            <label>
-              SKU
-              <input
-                className={field}
-                value={newMaterial.sku}
-                onChange={(e) =>
-                  setNewMaterial({ ...newMaterial, sku: e.target.value })
-                }
-              />
-            </label>
+            <MaterialSkuFields name={newMaterial.name} sku={newMaterial.sku} mode={newSkuMode} onModeChange={setNewSkuMode} onChange={value=>setNewMaterial({...newMaterial,...value})}/>
             <label>
               Tracking unit
               <input

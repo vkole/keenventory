@@ -16,13 +16,13 @@ export const GET=featureApi('materials','view',async(req,user)=>{
 });
 export const POST=featureApi('materials','create',async(req,user)=>{
  const p=await req.json();if(!can(user,'materialCosts','edit') && (Number(p.cost_per_unit)||Number(p.purchase_price))) throw Error('Material cost editing permission required.');
- return Response.json({ok:true,id:saveMaterial(p)});
+ const id=saveMaterial(p);return Response.json({ok:true,id,sku:material(id).sku});
 });
 export const PATCH=featureApi('materials','edit',async(req,user)=>{
  const p=await req.json();const old=material(Number(p.id));
  if(p.action==='archive'){db.prepare('UPDATE materials SET archived=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(p.archived===false?0:1,p.id);return Response.json({ok:true});}
  if(!can(user,'materialCosts','edit')) {p.cost_per_unit=old.cost_per_unit;p.purchase_price=old.purchase_price;}
- return Response.json({ok:true,id:saveMaterial(p,Number(p.id))});
+ const id=saveMaterial(p,Number(p.id));return Response.json({ok:true,id,sku:material(id).sku});
 });
 export const DELETE=featureApi('materials','delete',async(req)=>{
  const p=await req.json();if(p.confirm!==true)throw Error('Confirm material deletion.');
