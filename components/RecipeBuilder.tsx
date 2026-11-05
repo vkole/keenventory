@@ -1,4 +1,6 @@
 ﻿"use client";
+import {DecimalCostInput} from './DecimalCostInput';
+import {formatUnitCost,parseUnitCost} from '@/lib/unitCosts';
 import { can, type Viewer } from "@/lib/permissions";
 import { AttachmentGallery, uploadAttachments } from "./AttachmentGallery";
 import { useCallback, useEffect, useState } from "react";
@@ -124,7 +126,7 @@ export function RecipeBuilder({
     name: "",
     sku: "",
     unit: "oz",
-    cost_per_unit: 0,
+    cost_per_unit: "0",
     stock_quantity: 0,
     category: "Candle Wax",
   });
@@ -220,6 +222,7 @@ export function RecipeBuilder({
   async function createMaterial() {
     setBusy(true);
     try {
+      if(costEdit)parseUnitCost(newMaterial.cost_per_unit);
       if (!newMaterial.name.trim() || !newMaterial.sku.trim())
         throw new Error("Enter a material name and SKU.");
       const response = await fetch("/api/materials", {
@@ -383,7 +386,7 @@ export function RecipeBuilder({
         <datalist id="recipe-inventory">
           {stock.map((m) => (
             <option key={m.id} value={m.name}>
-              {m.unit} · {dollars(m.cost_per_unit)}
+              {m.unit} · {formatUnitCost(m.cost_per_unit)}
             </option>
           ))}
         </datalist>
@@ -493,7 +496,7 @@ export function RecipeBuilder({
                         </td>
                         <td>{item.unit}</td>
                         {costView && (
-                          <td>{dollars(plan.lines[index].unit_cost)}</td>
+                          <td>{formatUnitCost(plan.lines[index].unit_cost)}</td>
                         )}
                         <td>{plan.lines[index].required}</td>
                         {costView && (
@@ -581,10 +584,7 @@ export function RecipeBuilder({
                 <option>Component</option>
               </select>
             </label>
-            {costEdit &&
-              numberField("Unit cost ($)", newMaterial.cost_per_unit, (n) =>
-                setNewMaterial({ ...newMaterial, cost_per_unit: n }),
-              )}
+            {costEdit && <DecimalCostInput label="Unit cost ($)" value={newMaterial.cost_per_unit} onChange={value=>setNewMaterial({...newMaterial,cost_per_unit:value})}/>}
             {numberField("Opening stock", newMaterial.stock_quantity, (n) =>
               setNewMaterial({ ...newMaterial, stock_quantity: n }),
             )}

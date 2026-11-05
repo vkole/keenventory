@@ -1,4 +1,4 @@
-﻿import { decimal, money, pricing } from './production';
+﻿import { decimal, money, pricing, quantity } from './production';
 export type RecipeIngredientInput = {
   item_name: string;
   quantity: number;
@@ -45,7 +45,7 @@ export function calculateRecipeCosts({
     materialCost: money(material),
     laborCost: money(labor),
     totalBatchCost: money(total),
-    costPerUnit: batchYield > 0 ? money(total.div(batchYield)) : 0,
+    costPerUnit: batchYield > 0 ? quantity(total.div(batchYield)) : 0,
   };
 }
 export function calculatePricingGuidance({

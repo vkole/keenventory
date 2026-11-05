@@ -1,4 +1,6 @@
 import {db} from './db';
+import {unitCostMicros} from './unitCosts';
+import Decimal from 'decimal.js';
 import {inventory} from './manufacturing';
 import {materialInput,stockStatus} from './materialValidation';
 export function material(id:number): Record<string,any> {
@@ -6,7 +8,8 @@ export function material(id:number): Record<string,any> {
  if(!m) throw Error('Material not found.');
  const reserved=inventory(db).find(s=>s.id===id)?.reserved_quantity??0;
  const available=Number((m.stock_quantity-reserved).toFixed(6));
- return {...m,reserved_quantity:reserved,available_quantity:available,stock_status:stockStatus(available,m.reorder_threshold),barcodes:db.prepare('SELECT * FROM material_barcodes WHERE material_id=? ORDER BY id').all(id),images:db.prepare('SELECT id,is_primary,created_at FROM material_images WHERE material_id=? ORDER BY is_primary DESC,id').all(id)};
+ if(m.cost_per_unit_micros!==null)m.cost_per_unit=new Decimal(m.cost_per_unit_micros).div(1_000_000).toNumber();
+ return {...m,reserved_quantity:reserved,available_quantity:available,stock_status:stockStatus(available,m.reorder_threshold),barcodes:(db.prepare('SELECT * FROM material_barcodes WHERE material_id=? ORDER BY id').all(id) as Record<string,unknown>[]).map(b=>({...b,active:!!b.active})),images:db.prepare('SELECT id,is_primary,created_at FROM material_images WHERE material_id=? ORDER BY is_primary DESC,id').all(id)};
 }
 export function saveMaterial(input:unknown,id?:number) {
  const p=materialInput.parse(input);
@@ -27,8 +30,20 @@ export function saveMaterial(input:unknown,id?:number) {
    const duplicate=db.prepare('SELECT m.name FROM material_barcodes b JOIN materials m ON m.id=b.material_id WHERE b.value=? AND b.material_id<>?').get(b.value,id) as {name:string}|undefined;
    if(duplicate) throw Error(`Barcode ${b.value} is already assigned to ${duplicate.name}.`);
   }
-  db.prepare('DELETE FROM material_barcodes WHERE material_id=?').run(id);
-  for(const b of barcodes) db.prepare('INSERT INTO material_barcodes(material_id,value,type,package_quantity,package_unit) VALUES (?,?,?,?,?)').run(id,b.value,b.type,b.package_quantity,b.package_unit);
+  db.prepare('UPDATE materials SET cost_per_unit_micros=? WHERE id=?').run(unitCostMicros(p.cost_per_unit),id);
+  const retained:number[]=[];
+  for(const b of barcodes){
+   const old=db.prepare('SELECT id FROM material_barcodes WHERE material_id=? AND value=?').get(id,b.value) as {id:number}|undefined;
+   if(b.value.startsWith('KEENVENTORY:')){
+    const generated=db.prepare('SELECT material_id FROM generated_inventory_codes WHERE value=?').get(b.value) as {material_id:number}|undefined;
+    if(!generated || generated.material_id!==id || b.type!=='QR_CODE')throw Error('This inventory QR identifier is not registered to this material.');
+   }
+   if(old){db.prepare('UPDATE material_barcodes SET type=?,package_quantity=?,package_unit=?,active=? WHERE id=?').run(b.type,b.package_quantity,b.package_unit,b.active?1:0,old.id);retained.push(old.id);}
+   else {const row=db.prepare('INSERT INTO material_barcodes(material_id,value,type,package_quantity,package_unit,active) VALUES (?,?,?,?,?,?)').run(id,b.value,b.type,b.package_quantity,b.package_unit,b.active?1:0);retained.push(Number(row.lastInsertRowid));}
+  }
+  // Removing a registered code deactivates it, preserving its identity and scan history.
+  const oldCodes=db.prepare('SELECT id FROM material_barcodes WHERE material_id=?').all(id) as {id:number}[];
+  for(const old of oldCodes)if(!retained.includes(old.id))db.prepare('UPDATE material_barcodes SET active=0 WHERE id=?').run(old.id);
   return id!;
  }).immediate();
 }

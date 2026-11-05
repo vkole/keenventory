@@ -1,4 +1,6 @@
 'use client';
+import {DecimalCostInput} from './DecimalCostInput';
+import {parseUnitCost,formatUnitCost} from '@/lib/unitCosts';
 import {MaterialsWorkspace} from './MaterialsWorkspace';
 import {CalendarWorkspace} from './CalendarWorkspace';
 import {ReportsWorkspace} from './ReportsWorkspace';
@@ -315,7 +317,7 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
       category: componentForm.category,
       unit: componentForm.unit,
       stock_quantity: Number(componentForm.starting_quantity),
-      cost_per_unit: Number(componentForm.unit_cost),
+      cost_per_unit: parseUnitCost(componentForm.unit_cost).toNumber(),
       reorder_threshold: Number(componentForm.low_stock_limit),
       location: componentForm.storage_location,
     };
@@ -822,7 +824,7 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
                   <input value={componentForm.sku} onChange={(e) => setComponentForm({ ...componentForm, sku: e.target.value })} placeholder="SKU" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
                   <div className="grid grid-cols-2 gap-3">
                     <input type="number" value={componentForm.starting_quantity} onChange={(e) => setComponentForm({ ...componentForm, starting_quantity: e.target.value })} placeholder="Starting quantity" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                    <input type="number" step="0.01" value={componentForm.unit_cost} onChange={(e) => setComponentForm({ ...componentForm, unit_cost: e.target.value })} placeholder="Unit cost" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
+                    <DecimalCostInput label="Unit cost" value={componentForm.unit_cost} onChange={value=>setComponentForm({...componentForm,unit_cost:value})}/>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <input type="number" value={componentForm.low_stock_limit} onChange={(e) => setComponentForm({ ...componentForm, low_stock_limit: e.target.value })} placeholder="Low stock limit" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />

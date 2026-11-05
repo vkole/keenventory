@@ -57,3 +57,41 @@ Verification:
 
 The browser check uses an isolated temporary database and an actual generated EAN-13
 image to verify browser decoding. It uses installed Microsoft Edge via Playwright.
+
+QR codes and fractional unit costs
+---------------------------------
+The Barcode sidebar label is unchanged. The scanner heading is now Barcode & QR
+Code Scanner. QR Code, ITF and Data Matrix join the original barcode formats.
+Scans are opaque lookup values; URLs in a scan are never automatically opened.
+
+Save a material, then Edit Material > Generate QR Code. The authenticated server
+creates and immediately registers a random KEENVENTORY:<UUID> identifier. Preview,
+Download QR Image and Print QR Label are available on the edit and detail screens.
+No supplier, account or secret data is encoded. Print opens an authenticated label
+page with a Print Label button. To replace a label, deactivate its old code and
+generate another. Clearing Active Code (or removing a saved row) and saving
+invalidates lookup and label downloads without losing its identifier or history.
+Existing code IDs now survive material edits. Deactivated codes remain reserved to
+the original material to prevent accidental reassignment of old physical labels.
+
+Cost inputs keep string drafts, including '.', '0.', and trailing zeros, while
+editing. Final save rejects blank, negative, nonnumeric, or excessive precision
+values. UNIT_COST_PRECISION in lib/unitCosts.ts sets the UI precision (six by default).
+The supported cost range is 0 through 999999999.999999 per tracking unit.
+
+SQLite does not provide an enforced fixed-decimal type just by declaring NUMERIC.
+New material costs therefore additionally persist exact integer micro-dollar values
+in cost_per_unit_micros (one dollar = 1,000,000 micros). The existing REAL column is
+retained for compatibility with inventory, historical snapshots, and existing queries.
+Existing material costs are not rewritten. Older workflows that change the REAL cost
+invalidate the extra micro-dollar value through a trigger, preventing stale costs.
+New material edits and material receipts update both values in their transaction.
+Decimal.js handles multiplication, weighted purchase costs, recipes, manufacturing,
+pricing calculations, and inventory valuation. Unit costs retain up to six decimal
+places; final currency totals round to cents. The 108 oz x $0.1875 example is covered
+by tests for both recipe estimates and completed manufacturing ($20.25).
+
+Browser verification now covers actual EAN-13 and QR image decoding, QR generation,
+live QR decoding with a synthetic Chromium camera video, decimal editing and reload,
+and an unknown untrusted URL. Physical phone permissions/camera quality and real
+USB/Bluetooth scanner hardware still require acceptance testing on target devices.

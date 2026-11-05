@@ -9,7 +9,7 @@ import {
 } from "./calendarDates";
 import { requirePermission } from "./access";
 import type { Viewer } from "./permissions";
-import { money, quantity } from "./production";
+import { decimal, money, quantity } from "./production";
 type Row = Record<string, any>;
 export function reportPermissions(
   user: Viewer,
@@ -279,12 +279,12 @@ export function buildReport(
         production_cost: 0,
         unknown: false,
       };
-      row.value += v ?? 0;
+      row.value = decimal(row.value).plus(v??0).toNumber();
       row.unknown ||= v === null;
       row.count += n;
       row.quantity += q;
-      row.revenue += revenue;
-      row.production_cost += cost;
+      row.revenue = decimal(row.revenue).plus(revenue).toNumber();
+      row.production_cost = decimal(row.production_cost).plus(cost).toNumber();
       grouped.set(label, row);
     };
     const selectedOrders = orders.filter(
@@ -340,7 +340,7 @@ export function buildReport(
           type === "inventory_value"
             ? item.cost === null
               ? null
-              : item.n * item.cost
+              : decimal(item.n).times(item.cost).toNumber()
             : type === "stock"
               ? item.n
               : type === "low_stock"
@@ -385,7 +385,7 @@ export function buildReport(
           hasPeriod(r.completed_at ?? r.created_at, a, b) &&
           matchProduct(r.product_id),
       )) {
-        const labor = (batch.actual_minutes / 60) * batch.hourly_labor_rate;
+        const labor = decimal(batch.actual_minutes).div(60).times(batch.hourly_labor_rate).toNumber();
         const cost = batch.actual_cost;
         if (
           !batch.recipe_snapshot &&
@@ -458,7 +458,7 @@ export function buildReport(
         label,
         value: row.unknown
           ? null
-          : money(
+          : (type === "unit_cost" ? quantity : money)(
               type === "average_order"
                 ? row.value / row.count
                 : type === "unit_cost"
@@ -506,7 +506,7 @@ export function buildReport(
                     100
                   : 0
                 : raw.reduce((s, r) => s + r.value, 0);
-    return { rows, total: total === null ? null : money(total) };
+    return { rows, total: total === null ? null : (type === "unit_cost" ? quantity : money)(total) };
   }
   const current = calculate(startMs, endMs);
   const days =

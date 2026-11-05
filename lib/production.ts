@@ -125,7 +125,7 @@ export function planProduction(
     laborCost: money(laborCost),
     minutes: quantity(minutes),
     totalBatchCost: money(total),
-    costPerUnit: yieldCount > 0 ? money(total.div(yieldCount)) : 0,
+    costPerUnit: yieldCount > 0 ? quantity(total.div(yieldCount)) : 0,
     hasShortage:
       lines.some((l) => !l.valid) || availability.some((a) => a.shortage),
   };

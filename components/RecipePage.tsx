@@ -1,4 +1,5 @@
 "use client";
+import {formatUnitCost} from '@/lib/unitCosts';
 import Link from "next/link";
 import { useState } from "react";
 import type { DashboardData } from "@/lib/data";
@@ -108,8 +109,8 @@ export function RecipePage({
             </p>
             {can(user, "materialCosts") && costs && (
               <p>
-                Batch cost: ${costs.totalBatchCost.toFixed(2)} · Unit cost: $
-                {costs.costPerUnit.toFixed(2)}
+                Batch cost: ${costs.totalBatchCost.toFixed(2)} · Unit cost:
+                {formatUnitCost(costs.costPerUnit)}
               </p>
             )}
             <AttachmentGallery
@@ -145,7 +146,7 @@ export function RecipePage({
                     </td>
                     {can(user, "materialCosts") && (
                       <>
-                        <td>${(costs?.lines[n]?.unit_cost ?? 0).toFixed(2)}</td>
+                        <td>{formatUnitCost(costs?.lines[n]?.unit_cost ?? 0)}</td>
                         <td>${(costs?.lines[n]?.total ?? 0).toFixed(2)}</td>
                       </>
                     )}

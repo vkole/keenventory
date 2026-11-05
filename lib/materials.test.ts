@@ -6,7 +6,19 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import sharp from 'sharp';
 import {TestRequest,setupTestOwner} from './authTestSupport';
+import {parseUnitCost,unitCostMicros,decimalDraft} from './unitCosts';
+import {planProduction} from './production';
+import {calculateRecipeCosts} from './recipeCalculations';
 import {stockStatus,safeSupplierURL} from './materialValidation';
+test('six-decimal unit costs accept editing states and calculate full precision',()=>{
+ for(const v of ['0.18','0.075','0.0045','1.25','12.99','125.50','0.1875','0.000001'])assert.equal(parseUnitCost(v).toNumber(),Number(v));
+ for(const v of ['0.','.','1.','125.50'])assert.equal(decimalDraft(v),true);
+ for(const v of ['', '.', '-1','1.0000001','1e2','Infinity','NaN','abc'])assert.throws(()=>parseUnitCost(v));
+ assert.equal(unitCostMicros('0.0045'),4500);assert.equal(unitCostMicros('0.1875'),187500);
+ const formula={batch_yield:1,batch_minutes:0,hourly_labor_rate:0,ingredients:[{material_id:1,item_name:'Wax',quantity:108,unit:'oz',item_type:'material'}]};
+ assert.equal(planProduction(formula,[{id:1,name:'Wax',unit:'oz',stock_quantity:108,cost_per_unit:0.1875,reorder_threshold:0}]).materialCost,20.25);
+ assert.equal(calculateRecipeCosts({items:[{item_name:'Wax',quantity:108,unit:'oz',unit_cost:0.1875}],batchYield:1,batchMinutes:0,hourlyLaborRate:0}).materialCost,20.25);
+});
 test('material stock statuses and supplier URLs',()=>{
  assert.equal(stockStatus(0,8),'Out of Stock');assert.equal(stockStatus(-1,8),'Out of Stock');assert.equal(stockStatus(6,8),'Low Stock');assert.equal(stockStatus(8,8),'Low Stock');assert.equal(stockStatus(9,8),'In Stock');
  assert.equal(safeSupplierURL('https://example.com/wax'),'https://example.com/wax');for(const url of ['http://example.com','javascript:alert(1)','https://user:pass@example.com','https://127.0.0.1','https://localhost'])assert.throws(()=>safeSupplierURL(url));
@@ -39,7 +51,32 @@ test('materials, barcodes, image persistence, adjustments and permissions integr
  assert.equal((await images.DELETE(request('/api/materials/images',{material_id:id,image_id:image.id,confirm:true},'DELETE'))).status,200);assert.equal(material(id).images.length,0);
  assert.equal((await route.DELETE(request('/api/materials',{id,confirm:true},'DELETE'))).status,400);
  assert.equal((await route.GET(new Request('http://localhost/api/materials'))).status,401);
+
+ const qrRoute=await import('../app/api/materials/codes/route');
+ const qrResponse=await qrRoute.POST(request('/api/materials/codes',{material_id:id}));assert.equal(qrResponse.status,200);const qr=(await qrResponse.json()).code;
+ assert.match(qr.value,/^KEENVENTORY:[a-f0-9-]{36}$/);assert.equal(qr.type,'QR_CODE');
+ const pngQR=await qrRoute.GET(new TestRequest('http://localhost/api/materials/codes?id='+qr.id));assert.equal((await sharp(Buffer.from(await pngQR.arrayBuffer())).metadata()).format,'png');
+ assert.match((await qrRoute.GET(new TestRequest('http://localhost/api/materials/codes?id='+qr.id+'&download=1'))).headers.get('content-disposition')!,/attachment/);
+ const printed=await qrRoute.GET(new TestRequest('http://localhost/api/materials/codes?id='+qr.id+'&print=1'));assert.match(await printed.text(),/Print Label/);
+ assert.equal((await (await barcode.POST(request('/api/barcode',{value:qr.value}))).json()).material.id,id);
+ assert.equal((await (await barcode.POST(request('/api/barcode',{value:'https://untrusted.example/'}))).json()).material,null);
+ saveMaterial({...material(id),cost_per_unit:'0.0045'},id);assert.equal(material(id).cost_per_unit,0.0045);assert.equal(material(id).cost_per_unit_micros,4500);
+ const codes=material(id).barcodes as {id:number;active:boolean}[];saveMaterial({...material(id),barcodes:codes.map(b=>({...b,active:b.id!==qr.id}))},id);
+ assert.equal((await (await barcode.POST(request('/api/barcode',{value:qr.value}))).json()).material,null);
+ assert.equal((await qrRoute.GET(new TestRequest('http://localhost/api/materials/codes?id='+qr.id))).status,404);
+ assert.equal((material(id).barcodes as {id:number}[]).find(b=>b.id===qr.id)?.id,qr.id);
+ // Material metadata edits preserve registered identifiers and inventory balances.
+ saveMaterial({...material(id),description:'QR retained'},id);assert.equal(material(id).stock_quantity,22);
+ const wax=saveMaterial({name:'Precision Wax',sku:'PRECISION-WAX',unit:'oz',stock_quantity:108,cost_per_unit:'0.1875'});
+ assert.equal((db.prepare('SELECT cost_per_unit_micros FROM materials WHERE id=?').get(wax) as {cost_per_unit_micros:number}).cost_per_unit_micros,187500);
+ const {saveProduct}=await import('./productStore');const productId=saveProduct(db,{name:'Precision Candle',sku:'PRECISION-CANDLE'});
+ const recipeId=Number(db.prepare("INSERT INTO recipes(name,product_id,batch_yield,status) VALUES (?,?,1,'Active')").run('Precision Recipe',productId).lastInsertRowid);
+ db.prepare("INSERT INTO recipe_items(recipe_id,material_id,item_name,quantity,unit,item_type) VALUES (?,?,?,108,'oz','material')").run(recipeId,wax,'Precision Wax');
+ const {createBatch,completeBatch}=await import('./manufacturing');
+ const made=createBatch(db,{request_key:randomUUID(),recipe_id:recipeId,product_id:productId,planned_quantity:1});
+ completeBatch(db,{id:made,actual_quantity:1,actual_minutes:0,hourly_labor_rate:0,consumption:[{material_id:wax,quantity:108}]});
+ assert.equal((db.prepare('SELECT actual_cost FROM manufacturing_batches WHERE id=?').get(made) as {actual_cost:number}).actual_cost,20.25);
  const user=db.prepare("SELECT user_id FROM organization_memberships WHERE role='Owner'").get() as {user_id:string};db.prepare("UPDATE organization_memberships SET role='View Only',permissions=? WHERE user_id=?").run(JSON.stringify({materials:['view']}),user.user_id);
- assert.equal((await adjust.POST(request('/api/materials/adjust',{...adjustment,request_key:randomUUID()}))).status,403);assert.equal((await route.PATCH(request('/api/materials',{...p,id},'PATCH'))).status,403);assert.equal((await (await route.GET(new TestRequest('http://localhost/api/materials?id='+id))).json()).material.purchase_price,undefined);
+ assert.equal((await qrRoute.POST(request('/api/materials/codes',{material_id:id}))).status,403);assert.equal((await adjust.POST(request('/api/materials/adjust',{...adjustment,request_key:randomUUID()}))).status,403);assert.equal((await route.PATCH(request('/api/materials',{...p,id},'PATCH'))).status,403);assert.equal((await (await route.GET(new TestRequest('http://localhost/api/materials?id='+id))).json()).material.purchase_price,undefined);
  }finally{db.close();rmSync(folder,{recursive:true,force:true});}
 });

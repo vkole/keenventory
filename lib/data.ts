@@ -1,3 +1,4 @@
+import {decimal} from './production';
 import { db, ensureDatabase } from '@/lib/db';
 import { inventory } from '@/lib/manufacturing';
 import { products as managedProducts } from '@/lib/productStore';
@@ -188,8 +189,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     ingredients: recipeItems.filter((row) => row.recipe_id === recipe.id),
   }));
 
-  const rawMaterialValue = materials.reduce((sum, material) => sum + material.stock_quantity * material.cost_per_unit, 0);
-  const finishedGoodsValue = products.reduce((sum, product) => sum + product.stock_quantity * product.cost_per_unit, 0);
+  const rawMaterialValue = materials.reduce((sum, material) => sum.plus(decimal(material.stock_quantity).times(material.cost_per_unit)), decimal(0)).toNumber();
+  const finishedGoodsValue = products.reduce((sum, product) => sum.plus(decimal(product.stock_quantity).times(product.cost_per_unit)), decimal(0)).toNumber();
 
   const activeProducts = products.filter(p => !p.archived_at && p.state === 'Active').length;
   const materialSkus = materials.length;
@@ -200,7 +201,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const unfulfilledOrders = salesOrders.filter((order) => order.status !== 'Fulfilled' && order.status !== 'Cancelled').length;
 
   const summary = {
-    totalInventoryValue: toCurrency(rawMaterialValue + finishedGoodsValue),
+    totalInventoryValue: toCurrency(decimal(rawMaterialValue).plus(finishedGoodsValue).toNumber()),
     rawMaterialValue: toCurrency(rawMaterialValue),
     finishedGoodsValue: toCurrency(finishedGoodsValue),
     activeProducts,

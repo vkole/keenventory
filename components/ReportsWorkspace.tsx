@@ -1,4 +1,5 @@
 "use client";
+import {formatUnitCost} from '@/lib/unitCosts';
 import { useState, useEffect, useMemo } from "react";
 import {
   ResponsiveContainer,
@@ -128,7 +129,9 @@ export function ReportsWorkspace({ user }: { user: Viewer }) {
   const format = (v: number | null | undefined) =>
     v === null || v === undefined
       ? "Unavailable"
-      : report?.unit === "currency"
+      : report?.type === "unit_cost"
+        ? formatUnitCost(v)
+        : report?.unit === "currency"
         ? new Intl.NumberFormat("en-US", {
             style: "currency",
             currency: "USD",
