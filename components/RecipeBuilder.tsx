@@ -1,4 +1,5 @@
 ﻿"use client";
+import {MaterialCategorySelect} from './MaterialCategorySelect';
 import {MaterialSkuFields} from './MaterialSkuFields';
 import {validateMaterialSku,type MaterialSkuMode} from '@/lib/materialSku';
 import {DecimalCostInput} from './DecimalCostInput';
@@ -132,6 +133,7 @@ export function RecipeBuilder({
     cost_per_unit: "0",
     stock_quantity: 0,
     category: "Candle Wax",
+    category_id: undefined as number | undefined,
   });
   const stockEndpoint = user && !can(user, "manufacturing")
     ? "/api/materials"
@@ -543,21 +545,7 @@ export function RecipeBuilder({
                 }
               />
             </label>
-            <label>
-              Inventory category
-              <select
-                className={field}
-                value={newMaterial.category}
-                onChange={(e) =>
-                  setNewMaterial({ ...newMaterial, category: e.target.value })
-                }
-              >
-                <option>Candle Wax</option>
-                <option>Fragrance Oils</option>
-                <option>Miscellaneous Materials</option>
-                <option>Component</option>
-              </select>
-            </label>
+            <MaterialCategorySelect categoryId={newMaterial.category_id} name={newMaterial.category} user={user} onChange={(id,name)=>setNewMaterial(current=>({...current,category_id:id,category:name}))}/>
             {costEdit && <DecimalCostInput label="Unit cost ($)" value={newMaterial.cost_per_unit} onChange={value=>setNewMaterial({...newMaterial,cost_per_unit:value})}/>}
             {numberField("Opening stock", newMaterial.stock_quantity, (n) =>
               setNewMaterial({ ...newMaterial, stock_quantity: n }),

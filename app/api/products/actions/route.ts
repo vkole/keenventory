@@ -1,3 +1,4 @@
+import {resolveCategory} from '@/lib/categoryStore';
 import { secured } from '@/lib/access';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -377,6 +378,7 @@ async function handlePOST(request: Request) {
           db.prepare(
             "INSERT INTO inventory_ledger(material_id,location,delta,balance,kind,reason,reference_type,reference_id) VALUES (?,?,?,?,'Component conversion',?,'product',?)",
           ).run(m.id, loc, n, balance, body.reason, id);
+          const categoryRecord=db.prepare('SELECT category_id,category FROM materials WHERE id=?').get(m.id) as {category_id:number|null;category:string};if(!categoryRecord.category_id){const category=resolveCategory(db,undefined,categoryRecord.category||'Component');db.prepare('UPDATE materials SET category_id=?,category=? WHERE id=?').run(category.id,category.name,m.id);}
           event(db, id, 'Componentized', { material_id: m.id, quantity: n });
           return { id };
         }

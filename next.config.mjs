@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir:
-    process.env.KEENVENTORY_UI_TEST === "true"
+    process.env.KEENVENTORY_BARCODE_UI_TEST === "true"
+      ? ".next-barcode-test"
+      : process.env.KEENVENTORY_UI_TEST === "true"
       ? ".next-invitation-test"
       : ".next",
   reactStrictMode: true,

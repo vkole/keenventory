@@ -1,4 +1,5 @@
 import {db} from './db';
+import {getCategory,resolveCategory} from './categoryStore';
 import {supplier} from './supplierStore';
 import {purchaseUnitCost} from './purchaseUnits';
 import {generateMaterialSku,validateMaterialSku} from './materialSku';
@@ -9,6 +10,7 @@ import {materialSaveInput,stockStatus} from './materialValidation';
 export function material(id:number): Record<string,any> {
  const m=db.prepare('SELECT * FROM materials WHERE id=?').get(id) as Record<string,any>|undefined;
  if(!m) throw Error('Material not found.');
+ if(m.category_id)m.category=getCategory(db,m.category_id).name;
  const links=db.prepare('SELECT * FROM material_suppliers WHERE material_id=? ORDER BY is_primary DESC').all(id) as Record<string,any>[];
  const primary=links.find(link=>link.is_primary);
  if(primary)Object.assign(m,primary,{id:m.id});
@@ -24,6 +26,7 @@ export function saveMaterial(input:unknown,id?:number) {
  const {sku_mode,confirm_sku_change,apply_purchase_cost,...p}=materialSaveInput.parse(input);
  return db.transaction(()=>{
   const existing=id?material(id):null;
+  const category=resolveCategory(db,p.category_id,p.category,existing?.category_id);p.category_id=category.id;p.category=category.name;
   // This immediate transaction serializes allocation and insertion across connections.
   // The workspace database enforces organization_id=1 for all inventory records.
   const skuTaken=(sku:string)=>!!db.prepare('SELECT id FROM materials WHERE organization_id=1 AND sku=? COLLATE NOCASE AND id<>? LIMIT 1').get(sku,id??0);

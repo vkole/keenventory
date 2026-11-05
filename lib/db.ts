@@ -1,3 +1,4 @@
+import {initializeCategories} from './categorySchema';
 import {initializeSuppliers} from './supplierSchema';
 import fs from 'fs';
 import { initializeMaterials } from './materialSchema';
@@ -407,3 +408,4 @@ initializeAccess(db);
 initializeEnhancements(db);
 initializeMaterials(db);
 initializeSuppliers(db);
+initializeCategories(db);
