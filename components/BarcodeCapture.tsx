@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import {useEffect,useRef,useState} from 'react';
 import type {IScannerControls} from '@zxing/browser';
 import {buttonClass,inputClass} from './ProductForm';
@@ -32,7 +33,7 @@ export function BarcodeCapture({onDetected}:{onDetected:(value:string,type:strin
   <div className="flex flex-wrap gap-3"><button type="button" className={buttonClass} onClick={()=>void start()}>Scan with Camera</button><label className={buttonClass+' cursor-pointer'}>Upload Barcode Image<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{void upload(e.target.files?.[0]);e.target.value='';}}/></label>{active&&<button type="button" className={buttonClass} onClick={stop}>Stop Scanner</button>}</div>
   {devices.length>1&&<label className="block">Camera<select className={inputClass} value={device} onChange={e=>{setDevice(e.target.value);if(active)void start(e.target.value);}}><option value="">Rear camera (preferred)</option>{devices.map((d,i)=><option key={d.deviceId} value={d.deviceId}>{d.label||`Camera ${i+1}`}</option>)}</select></label>}
   <div hidden={!active} className="relative max-w-xl overflow-hidden rounded-xl bg-black"><video ref={video} muted playsInline className="w-full"/><div className="pointer-events-none absolute inset-x-[10%] inset-y-[30%] rounded-lg border-2 border-white"/><p className="absolute bottom-2 w-full text-center text-white">Place the barcode inside the guide</p></div>
-  {preview&&<img src={preview} alt="Uploaded barcode preview" className="max-h-40 rounded-xl"/>}
+  {preview&&<Image unoptimized width={320} height={160} src={preview} alt="Uploaded barcode preview" className="max-h-40 w-auto rounded-xl object-contain"/>}
   {candidate&&<div className="space-y-2"><label>Confirm or correct barcode<input className={inputClass} value={candidate.value} onChange={e=>setCandidate({...candidate,value:e.target.value})}/></label><p>{candidate.type}</p><button type="button" className={buttonClass} disabled={!candidate.value.trim()} onClick={()=>{onDetected(candidate.value.trim(),candidate.type);setCandidate(null);setPreview('');}}>Use This Barcode</button></div>}
   {error&&<p role="alert">{error}</p>}
  </div>;
