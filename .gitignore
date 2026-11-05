@@ -12,3 +12,5 @@ npm-debug.log*
 buildlog.txt
 .env*
 !.env.example
+
+.next-barcode-test

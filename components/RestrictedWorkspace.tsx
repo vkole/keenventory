@@ -1,9 +1,11 @@
 "use client";
+import {MaterialsWorkspace} from './MaterialsWorkspace';
 import {CalendarWorkspace} from './CalendarWorkspace';
 import {ReportsWorkspace} from './ReportsWorkspace';
 import {RecipeLibrary} from './RecipeLibrary';
 import {ImportWizard} from './ImportWizard';
 import Link from "next/link";
+import { ScanBarcode } from "lucide-react";
 import { ScopedManufacturing } from "./ScopedManufacturing";
 import { useState,useEffect } from "react";
 import type { DashboardData } from "@/lib/data";
@@ -187,13 +189,14 @@ export function RestrictedWorkspace({
             Keenventory
           </Link>
           <nav className="grid gap-2">
+{can(user,"materials")&&<><Link className="rounded-xl p-3" href="/barcode"><ScanBarcode className="mr-2 inline" size={18}/>Barcode</Link><Link className="rounded-xl p-3" href="/materials">Manage Materials</Link></>}
             {links.map((f) => (
               <button
                 className={
                   "rounded-xl p-3 text-left " + (tab === f ? "bg-white/15" : "")
                 }
                 key={f}
-                onClick={() => navigate(f)}
+                onClick={() => f==='materials'?window.location.assign('/materials'):navigate(f)}
               >
                 {f === "dashboard" ? "Dashboard" : featureLabels[f]}
               </button>
@@ -216,8 +219,9 @@ export function RestrictedWorkspace({
             aria-label="Module"
             className={inputClass + " mb-5 lg:hidden"}
             value={tab}
-            onChange={(e) => navigate(e.target.value)}
+            onChange={(e) => ['materials','barcode'].includes(e.target.value)?window.location.assign('/'+e.target.value):navigate(e.target.value)}
           >
+            {can(user,"materials")&&<option value="barcode">Barcode</option>}
             {links.map((f) => (
               <option key={f} value={f}>
                 {f === "dashboard" ? "Dashboard" : featureLabels[f]}
@@ -229,7 +233,7 @@ export function RestrictedWorkspace({
               {message}
             </p>
           )}
-          {tab === "dashboard" ? (
+          {tab === 'materials' ? <MaterialsWorkspace user={user}/> : tab === "dashboard" ? (
             <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {modules.map((f) => (
                 <button

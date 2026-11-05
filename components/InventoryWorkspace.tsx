@@ -1,4 +1,5 @@
 'use client';
+import {MaterialsWorkspace} from './MaterialsWorkspace';
 import {CalendarWorkspace} from './CalendarWorkspace';
 import {ReportsWorkspace} from './ReportsWorkspace';
 import {ImportWizard} from './ImportWizard';
@@ -46,12 +47,14 @@ import {
   ShoppingCart,
   Truck,
   Warehouse,
+  ScanBarcode,
 } from 'lucide-react';
 import type { DashboardData, Material, Product, Recipe, Order, PurchaseOrder } from '@/lib/data';
 
 
 const tabs = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
+  { id: 'barcode', label: 'Barcode', icon: ScanBarcode },
   { id: 'materials', label: 'Materials', icon: Warehouse },
   { id: 'components', label: 'Components', icon: Package2 },
   { id: 'products', label: 'Products', icon: Package2 },
@@ -84,7 +87,7 @@ export function InventoryWorkspace({ initialData, user }: { initialData: Dashboa
 function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Viewer }) {
   const [data, setData] = useState(initialData);
   const [orderImport,setOrderImport]=useState(false);
-  useEffect(()=>{const selectedModule=new URLSearchParams(window.location.search).get('module');if(tabs.some(t=>t.id===selectedModule))setActiveTab(selectedModule as (typeof tabs)[number]['id']);},[]);
+  useEffect(()=>{const selectedModule=new URLSearchParams(window.location.search).get('module');if(selectedModule==='barcode'){window.location.assign('/barcode');return;}if(tabs.some(t=>t.id===selectedModule))setActiveTab(selectedModule as (typeof tabs)[number]['id']);},[]);
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]['id']>('dashboard');
   const [viewMode, setViewMode] = useState<Record<string, 'list' | 'calendar'>>({
     dashboard: 'list',
@@ -628,7 +631,7 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
               <button
                 key={id}
                 type="button"
-                onClick={() => setActiveTab(id)}
+                onClick={() => id==='barcode'?window.location.assign('/barcode'):setActiveTab(id)}
                 className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium transition ${
                   activeTab === id ? 'bg-white/10 text-white' : 'text-slate-300 hover:bg-white/5'
                 }`}
@@ -648,7 +651,7 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
         <RecordDrawer excludeProducts/><main className="min-w-0 flex-1 p-4 md:p-6 xl:p-8">
           <label className="mb-4 grid gap-2 text-sm lg:hidden">
             Module
-            <select aria-label="Module" className="rounded-xl border border-[#E2E1E2] bg-white p-3" value={activeTab} onChange={e => { const tab = tabs.find(tab => tab.id === e.target.value); if (tab) setActiveTab(tab.id); }}>
+            <select aria-label="Module" className="rounded-xl border border-[#E2E1E2] bg-white p-3" value={activeTab} onChange={e => { const tab = tabs.find(tab => tab.id === e.target.value); if (tab) {if(tab.id==='barcode')window.location.assign('/barcode');else setActiveTab(tab.id);} }}>
               {tabs.filter(t=>t.id!=='content'||can(user,'content')).map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
             </select>
           </label>
@@ -778,77 +781,7 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
             </div>
           )}
 
-          {activeTab === 'materials' && (
-            viewMode.materials === 'calendar' ? renderCalendarView('materials') : (
-            <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-              <div className="card rounded-3xl p-5">
-                <div className="mb-5 flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Material inventory</h3>
-                  <span className="badge bg-[#F4EAE8] text-[#000E2D]">{data.materials.length} records</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-[#E2E1E2] text-[#868F9E]">
-                      <tr>
-                        <th className="pb-3 pr-4">Name</th>
-                        <th className="pb-3 pr-4">SKU</th>
-                        <th className="pb-3 pr-4">Stock</th>
-                        <th className="pb-3 pr-4">Cost</th>
-                        <th className="pb-3 pr-4">Location</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.materials.map((material: Material) => (
-                        <tr key={material.id} className="border-b border-[#F4EAE8] last:border-0">
-                          <td className="py-3 pr-4 font-medium">{material.name}</td>
-                          <td className="py-3 pr-4 text-[#868F9E]">{material.sku}</td>
-                          <td className="table-mono py-3 pr-4">{material.stock_quantity} {material.unit}</td>
-                          <td className="table-mono py-3 pr-4">{currency.format(material.cost_per_unit)}</td>
-                          <td className="py-3 pr-4">{material.location}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <form onSubmit={handleMaterialSubmit} className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">Add material</h3>
-                <div className="grid gap-3">
-                  <input value={materialForm.name} onChange={(e) => setMaterialForm({ ...materialForm, name: e.target.value })} placeholder="Material name" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  <input value={materialForm.sku} onChange={(e) => setMaterialForm({ ...materialForm, sku: e.target.value })} placeholder="SKU" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <select value={materialForm.category} onChange={(e) => setMaterialForm({ ...materialForm, category: e.target.value })} className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none">
-                      <option>Candle Wax</option>
-                      <option>Fragrance Oils</option>
-                      <option>Candle Jars</option>
-                      <option>Wicks</option>
-                      <option>Candle Lids</option>
-                    </select>
-                    <select value={materialForm.unit} onChange={(e) => setMaterialForm({ ...materialForm, unit: e.target.value })} className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none">
-                      <option>oz</option>
-                      <option>lb</option>
-                      <option>g</option>
-                      <option>mL</option>
-                      <option>unit</option>
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="number" value={materialForm.stock_quantity} onChange={(e) => setMaterialForm({ ...materialForm, stock_quantity: e.target.value })} placeholder="Stock" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                    <input type="number" step="0.01" value={materialForm.cost_per_unit} onChange={(e) => setMaterialForm({ ...materialForm, cost_per_unit: e.target.value })} placeholder="Unit cost" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="number" value={materialForm.reorder_threshold} onChange={(e) => setMaterialForm({ ...materialForm, reorder_threshold: e.target.value })} placeholder="Reorder threshold" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                    <input value={materialForm.location} onChange={(e) => setMaterialForm({ ...materialForm, location: e.target.value })} placeholder="Location" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  </div>
-                  <button type="submit" className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-[#000E2D] p-3 font-medium text-white">
-                    <Plus size={16} /> Add material
-                  </button>
-                </div>
-              </form>
-            </div>
-            )
-          )}
+          {activeTab === 'materials' && <MaterialsWorkspace user={user} onChanged={refreshDashboard}/>}
 
           {activeTab === 'components' && (
             viewMode.components === 'calendar' ? renderCalendarView('components') : (

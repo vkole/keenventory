@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { initializeMaterials } from './materialSchema';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { initializeProducts } from './productStore';
@@ -402,3 +403,4 @@ ensureDatabase();
 initializeProducts(db);
 initializeAccess(db);
 initializeEnhancements(db);
+initializeMaterials(db);
