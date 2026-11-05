@@ -1,0 +1,52 @@
+﻿import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {randomUUID} from 'node:crypto';
+import {TestRequest,setupTestOwner} from './authTestSupport';
+import {generateSupplierCode} from './supplierValidation';
+import {convertPurchaseQuantity,purchaseUnitCost} from './purchaseUnits';
+test('supplier IDs normalize names and purchase units preserve dimensions and decimal precision',()=>{
+ for(const [name,code] of [['CandleScience','SUP-CANDLESCIENCE'],['Makesy','SUP-MAKESY'],['The Flaming Candle','SUP-THE-FLAMING-CANDLE'],['Lone Star Candle Supply','SUP-LONE-STAR-CANDLE-SUPPLY'],[' A & B -- Co! ','SUP-A-B-CO'],['','']])assert.equal(generateSupplierCode(name),code);
+ assert.equal(convertPurchaseQuantity(10,'lb','oz').toNumber(),160);assert.equal(convertPurchaseQuantity(1,'kg','g').toNumber(),1000);assert.equal(convertPurchaseQuantity(1,'l','ml').toNumber(),1000);assert.equal(convertPurchaseQuantity(12,'Each','item').toNumber(),12);
+ assert.deepEqual(purchaseUnitCost(10,'lb','oz','32.00'),{tracking_quantity:160,cost_per_unit:0.2});assert.equal(purchaseUnitCost(1,'g','g','0.0045').cost_per_unit,0.0045);
+ for(const [from,to] of [['ml','g'],['oz','fl oz'],['item','lb']])assert.throws(()=>convertPurchaseQuantity(1,from,to),/incompatible/);
+});
+test('supplier migration, normalized links, lookup, edits, receipts and permissions preserve existing records',async()=>{
+ const folder=mkdtempSync(path.join(tmpdir(),'keen-suppliers-'));process.env.KEENVENTORY_DATA_DIR=folder;const {db}=await import('./db');await setupTestOwner();
+ try{
+ const route=await import('../app/api/suppliers/route');const materials=await import('../app/api/materials/route');const barcode=await import('../app/api/barcode/route');const receive=await import('../app/api/materials/receive/route');const {material,saveMaterial}=await import('./materialStore');const {supplier}=await import('./supplierStore');
+ const request=(body:unknown,method='POST',url='/api/suppliers')=>new TestRequest('http://localhost'+url,{method,body:JSON.stringify(body)});
+ const legacySupplier=db.prepare('SELECT id,uuid FROM suppliers ORDER BY id LIMIT 1').get() as {id:number;uuid:string};
+ const legacyMaterial=Number(db.prepare("INSERT INTO materials(name,sku,stock_quantity,cost_per_unit,unit,supplier_id,supplier_sku,product_url,purchase_unit,purchase_quantity,purchase_price) VALUES ('Legacy linked wax','LEGACY-SUPPLIER-WAX',13,0.0045,'oz',?,'OLD-CATALOG','https://legacy.example/wax','Bag',10,32)").run(legacySupplier.id).lastInsertRowid);
+ db.prepare("DELETE FROM supplier_migrations WHERE name='supplier-links-v1'").run();const schema=await import('./supplierSchema');schema.initializeSuppliers(db);
+ assert.equal(material(legacyMaterial).supplier_uuid,legacySupplier.uuid);assert.equal(material(legacyMaterial).supplier_sku,'OLD-CATALOG');assert.equal(material(legacyMaterial).stock_quantity,13);assert.equal(material(legacyMaterial).cost_per_unit,0.0045);
+ const before=db.prepare('SELECT id,supplier,total_cost FROM purchase_orders ORDER BY id').all();const oldMaterials=db.prepare('SELECT id,sku,stock_quantity FROM materials ORDER BY id').all();
+ const seed=db.prepare('SELECT id,uuid,supplier_code FROM suppliers ORDER BY id LIMIT 1').get() as {id:number;uuid:string;supplier_code:string};assert.match(seed.uuid,/^[a-f0-9-]{36}$/);assert.match(seed.supplier_code,/^SUP-/);
+ const {initializeSuppliers}=await import('./supplierSchema');initializeSuppliers(db);assert.equal((db.prepare('SELECT uuid FROM suppliers WHERE id=?').get(seed.id) as {uuid:string}).uuid,seed.uuid);
+ const created=await Promise.all([0,1,2].map(()=>route.POST(request({company_name:'CandleScience',code_mode:'auto',website:'https://example.com',contact_name:'Candle Team',email:'team@example.com',phone:'555-0100',address:'123 Candle Street'}))));
+ const companies=await Promise.all(created.map(async r=>{assert.equal(r.status,200);return (await r.json()).supplier;}));assert.deepEqual(companies.map(s=>s.supplier_code).sort(),['SUP-CANDLESCIENCE','SUP-CANDLESCIENCE-002','SUP-CANDLESCIENCE-003']);const company=companies[0],alternate=companies[1];
+ const lookup=await route.GET(new TestRequest('http://localhost/api/suppliers?lookup=1&code='+company.supplier_code));assert.equal((await lookup.json()).supplier.uuid,company.uuid);
+ const invalid=await route.GET(new TestRequest('http://localhost/api/suppliers?lookup=1&code=UNKNOWN'));assert.equal(invalid.status,404);assert.equal((await invalid.json()).error,'Supplier not found. Please select an existing supplier or create a new one.');
+ const found=await route.GET(new TestRequest('http://localhost/api/suppliers?lookup=1&q=CandleScience'));assert.equal((await found.json()).suppliers.length,3);
+ assert.equal((await route.POST(request({company_name:'Duplicate',supplier_code:company.supplier_code,code_mode:'manual'}))).status,400);
+ const id=saveMaterial({name:'Supplier-linked Soy Wax',unit:'oz',supplier_uuid:company.uuid,supplier_name:'Forged name',supplier_website:'https://wrong.example',supplier_sku:'WAX-464',product_url:'https://example.com/wax',purchase_unit:'Bag',purchase_quantity:10,quantity_unit:'lb',purchase_price:'32.00',apply_purchase_cost:true,barcodes:[{value:'SUPPLIER-WAX-CODE',type:'CODE_128',package_quantity:160,package_unit:'oz'}],supplier_links:[{supplier_uuid:alternate.uuid,supplier_sku:'ALTERNATE-464',product_url:'https://example.com/other-wax',purchase_unit:'Box',purchase_quantity:20,quantity_unit:'lb',purchase_price:60}]});
+ const m=material(id);assert.equal(m.supplier_name,company.company_name);assert.equal(m.supplier_website,'https://example.com/');assert.equal(m.supplier_id,company.id);assert.equal(m.supplier_code,company.supplier_code);assert.equal(m.supplier_sku,'WAX-464');assert.equal(m.cost_per_unit,0.2);assert.equal(m.cost_per_unit_micros,200000);assert.equal(m.supplier_links[0].supplier_sku,'ALTERNATE-464');
+ assert.equal((db.prepare('SELECT COUNT(*) n FROM suppliers').get() as {n:number}).n,5);
+ const renamed=await route.PATCH(request({...company,company_name:'Renamed Candle Supplier',website:'https://updated.example',code_mode:'auto',supplier_code:'IGNORED'},'PATCH'));assert.equal(renamed.status,200);assert.equal(supplier(company.uuid).supplier_code,company.supplier_code);assert.equal(material(id).supplier_name,'Renamed Candle Supplier');assert.equal(material(id).supplier_website,'https://updated.example/');assert.equal(material(id).product_url,'https://example.com/wax');
+ const scan=await barcode.POST(request({value:'SUPPLIER-WAX-CODE'},'POST','/api/barcode'));assert.equal((await scan.json()).material.supplier_name,'Renamed Candle Supplier');
+ const key=randomUUID();const receipt={material_id:id,purchase_id:null,quantity:1,unit_cost:0,supplier:'Ignored',purchase_units:1,request_key:key,confirm:true};assert.equal((await receive.POST(request(receipt,'POST','/api/materials/receive'))).status,200);assert.equal((await receive.POST(request(receipt,'POST','/api/materials/receive'))).status,200);assert.equal(material(id).stock_quantity,160);assert.equal(material(id).cost_per_unit,0.2);
+ const purchase=db.prepare('SELECT p.* FROM purchase_orders p JOIN material_receipts r ON r.purchase_id=p.id WHERE r.request_key=?').get(key) as {total_cost:number;supplier_uuid:string};assert.equal(purchase.total_cost,32);assert.equal(purchase.supplier_uuid,company.uuid);
+ assert.deepEqual(db.prepare('SELECT id,supplier,total_cost FROM purchase_orders ORDER BY id LIMIT ?').all(before.length),before);assert.deepEqual(db.prepare('SELECT id,sku,stock_quantity FROM materials WHERE id<>? ORDER BY id').all(id),oldMaterials);
+ assert.throws(()=>saveMaterial({...material(id),supplier_uuid:randomUUID()},id),/Supplier not found/);
+ assert.throws(()=>saveMaterial({...material(id),quantity_unit:'ml',apply_purchase_cost:true},id),/incompatible/);assert.equal(material(id).cost_per_unit,0.2);
+ const membership=db.prepare("SELECT user_id FROM organization_memberships WHERE role='Owner'").get() as {user_id:string};db.prepare("UPDATE organization_memberships SET role='View Only',permissions=? WHERE user_id=?").run(JSON.stringify({materials:['view'],vendors:['view']}),membership.user_id);
+ assert.equal((await route.POST(request({company_name:'Forbidden'}))).status,403);assert.equal((await route.PATCH(request(company,'PATCH'))).status,403);
+ db.prepare("UPDATE organization_memberships SET role='Staff',permissions=? WHERE user_id=?").run(JSON.stringify({materials:['view'],materialCosts:['view']}),membership.user_id);
+ const costVisible=(await (await materials.GET(new TestRequest('http://localhost/api/materials?id='+id))).json()).material;assert.equal(costVisible.purchase_price,32);assert.equal(costVisible.supplier_links[0].purchase_price,60);
+ db.prepare("UPDATE organization_memberships SET role='View Only',permissions=? WHERE user_id=?").run(JSON.stringify({materials:['view'],vendors:['view']}),membership.user_id);
+ const hidden=await materials.GET(new TestRequest('http://localhost/api/materials?id='+id));const hiddenMaterial=(await hidden.json()).material;assert.equal(hiddenMaterial.purchase_price,undefined);assert.equal(hiddenMaterial.supplier_links[0].purchase_price,undefined);
+ assert.equal((await route.GET(new Request('http://localhost/api/suppliers'))).status,401);
+ }finally{db.close();rmSync(folder,{recursive:true,force:true});}
+});

@@ -1,6 +1,7 @@
 'use client';
 import {DecimalCostInput} from './DecimalCostInput';
 import {parseUnitCost,formatUnitCost} from '@/lib/unitCosts';
+import {SuppliersWorkspace} from './SuppliersWorkspace';
 import {MaterialsWorkspace} from './MaterialsWorkspace';
 import {CalendarWorkspace} from './CalendarWorkspace';
 import {ReportsWorkspace} from './ReportsWorkspace';
@@ -988,56 +989,7 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
             )
           )}
 
-          {activeTab === 'suppliers' && (
-            <div className="grid gap-6 xl:grid-cols-[1.3fr_0.85fr]">
-              <div className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">Suppliers & contacts</h3>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-[#E2E1E2] text-[#868F9E]">
-                      <tr>
-                        <th className="pb-3 pr-4">Company</th>
-                        <th className="pb-3 pr-4">Contact</th>
-                        <th className="pb-3 pr-4">Lead time</th>
-                        <th className="pb-3 pr-4">Payments</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.suppliers.map((supplier) => (
-                        <tr key={supplier.id} className="border-b border-[#F4EAE8] last:border-0">
-                          <td className="py-3 pr-4 font-medium">{supplier.company_name}</td>
-                          <td className="py-3 pr-4">{supplier.contact_name}</td>
-                          <td className="py-3 pr-4">{supplier.lead_time ?? 'N/A'}</td>
-                          <td className="py-3 pr-4">{supplier.payment_terms ?? 'N/A'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <form onSubmit={handleSupplierSubmit} className="card rounded-3xl p-5">
-                <h3 className="mb-5 text-lg font-semibold">Add supplier</h3>
-                <div className="grid gap-3">
-                  <input value={supplierForm.company_name} onChange={(e) => setSupplierForm({ ...supplierForm, company_name: e.target.value })} placeholder="Company name" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  <input value={supplierForm.contact_name} onChange={(e) => setSupplierForm({ ...supplierForm, contact_name: e.target.value })} placeholder="Contact name" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <input value={supplierForm.email} onChange={(e) => setSupplierForm({ ...supplierForm, email: e.target.value })} placeholder="Email" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                    <input value={supplierForm.phone} onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })} placeholder="Phone" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <input value={supplierForm.website} onChange={(e) => setSupplierForm({ ...supplierForm, website: e.target.value })} placeholder="Website" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                    <input value={supplierForm.lead_time} onChange={(e) => setSupplierForm({ ...supplierForm, lead_time: e.target.value })} placeholder="Lead time" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  </div>
-                  <input value={supplierForm.payment_terms} onChange={(e) => setSupplierForm({ ...supplierForm, payment_terms: e.target.value })} placeholder="Payment terms" className="rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  <textarea value={supplierForm.notes} onChange={(e) => setSupplierForm({ ...supplierForm, notes: e.target.value })} placeholder="Notes" className="min-h-[90px] rounded-xl border border-[#E2E1E2] bg-white p-3 outline-none" />
-                  <button type="submit" className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-[#000E2D] p-3 font-medium text-white">
-                    <Plus size={16} /> Save supplier
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
+          {activeTab === 'suppliers' && <SuppliersWorkspace user={user} onChanged={refreshDashboard}/>}
 
           {activeTab === 'adjustments' && (
             <div className="grid gap-6 xl:grid-cols-[1.3fr_0.8fr]">

@@ -1,6 +1,7 @@
 import {featureApi} from '@/lib/featureApi';
 import {db} from '@/lib/db';
 import {material} from '@/lib/materialStore';
+import {materialForViewer} from '@/lib/materialAccess';
 import {can} from '@/lib/permissions';
 export const GET=featureApi('materials','view',async(req)=>{
  const value=new URL(req.url).searchParams.get('value');
@@ -15,6 +16,5 @@ export const POST=featureApi('materials','view',async(req,user)=>{
  if(!b)return Response.json({material:null});const m=material(b.material_id);
  const last=db.prepare('SELECT id FROM barcode_scans WHERE user_id=? AND value=? AND created_at>datetime(\'now\',\'-10 seconds\')').get(user.id,p.value.trim());
  if(!last)db.prepare('INSERT INTO barcode_scans(user_id,material_id,value,stock_status) VALUES (?,?,?,?)').run(user.id,m.id,p.value.trim(),m.stock_status);
- if(!can(user,'materialCosts')){delete m.cost_per_unit;delete m.cost_per_unit_micros;delete m.purchase_price;}
- return Response.json({material:m});
+ return Response.json({material:materialForViewer(m,user)});
 });

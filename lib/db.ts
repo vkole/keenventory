@@ -1,3 +1,4 @@
+import {initializeSuppliers} from './supplierSchema';
 import fs from 'fs';
 import { initializeMaterials } from './materialSchema';
 import path from 'path';
@@ -9,8 +10,9 @@ import { initializeEnhancements } from './enhancementSchema';
 const dataDirectory =
   // Render disks are unavailable during builds. Keep build-time initialization
   // separate from the persistent workspace and never seed/migrate live data then.
+  // Each build worker gets its own disposable database to avoid migration locks.
   process.env.NEXT_PHASE === 'phase-production-build'
-    ? path.join(process.cwd(), '.next', 'build-data')
+    ? path.join(process.cwd(), '.next', 'build-data', String(process.pid))
     : process.env.KEENVENTORY_DATA_DIR || path.join(process.cwd(), 'data');
 fs.mkdirSync(dataDirectory, { recursive: true });
 
@@ -404,3 +406,4 @@ initializeProducts(db);
 initializeAccess(db);
 initializeEnhancements(db);
 initializeMaterials(db);
+initializeSuppliers(db);

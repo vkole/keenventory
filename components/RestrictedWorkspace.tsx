@@ -1,4 +1,5 @@
 "use client";
+import {SuppliersWorkspace} from './SuppliersWorkspace';
 import {MaterialsWorkspace} from './MaterialsWorkspace';
 import {CalendarWorkspace} from './CalendarWorkspace';
 import {ReportsWorkspace} from './ReportsWorkspace';
@@ -233,7 +234,7 @@ export function RestrictedWorkspace({
               {message}
             </p>
           )}
-          {tab === 'materials' ? <MaterialsWorkspace user={user}/> : tab === "dashboard" ? (
+          {tab === 'vendors' ? <SuppliersWorkspace user={user}/> : tab === 'materials' ? <MaterialsWorkspace user={user}/> : tab === "dashboard" ? (
             <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {modules.map((f) => (
                 <button
