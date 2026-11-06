@@ -1,4 +1,5 @@
 ﻿"use client";
+import {useDraftGuard} from "./NavigationGuard";
 import {MaterialCategorySelect} from './MaterialCategorySelect';
 import {MaterialSkuFields} from './MaterialSkuFields';
 import {validateMaterialSku,type MaterialSkuMode} from '@/lib/materialSku';
@@ -104,6 +105,7 @@ export function RecipeBuilder({
       : empty(),
   );
   const [files, setFiles] = useState<File[]>([]);
+  const markSaved=useDraftGuard({form,files:files.map(f=>[f.name,f.size,f.lastModified])});
   const costView = !user || can(user, "materialCosts"),
     costEdit = !user || can(user, "materialCosts", "edit");
   useEffect(() => {
@@ -201,6 +203,7 @@ export function RecipeBuilder({
       setForm((current) => ({ ...current, id: body.id }));
       await uploadAttachments("recipe", body.id, files);
       setFiles([]);
+      markSaved(action==="another"?{form:empty(),files:[]}:{form:{...form,id:body.id},files:[]});
       onRefresh();
       if (onSaved && !["another", "manufacture"].includes(action)) {
         onSaved(body.id);

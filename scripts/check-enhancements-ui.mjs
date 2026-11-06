@@ -172,7 +172,7 @@ try {
 
   await page.setViewportSize({ width: 1440, height: 1050 });
   await page
-    .getByRole("button", { name: "Content Calendar", exact: true })
+    .getByRole("link", { name: "Content Calendar", exact: true })
     .click();
   const month = page.getByLabel("Calendar month and year");
   const current = await month.inputValue();
@@ -205,7 +205,7 @@ try {
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.reload();
   await page
-    .getByRole("button", { name: "Content Calendar", exact: true })
+    .getByRole("link", { name: "Content Calendar", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Browser content launch", exact: true })
@@ -223,7 +223,7 @@ try {
     path: "artifacts/content-calendar.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: "Orders", exact: true }).click();
+  await page.getByRole("link", { name: "Orders", exact: true }).click();
   await page
     .getByRole("button", { name: "Calendar View", exact: true })
     .click();
@@ -246,7 +246,7 @@ try {
     .getByRole("dialog", { name: "Event details", exact: true })
     .waitFor({ state: "hidden" });
   await page
-    .getByRole("button", { name: "Reports & Analytics", exact: true })
+    .getByRole("link", { name: "Reports & Analytics", exact: true })
     .click();
   await page.getByLabel("Date Range", { exact: true }).selectOption("All Time");
   await page.getByLabel("Report Type", { exact: true }).selectOption("orders");
@@ -288,7 +288,7 @@ try {
   assert.match(pdfReview.extracted_text, /PDF-BROWSER-1/);
   assert.equal(pdfReview.rows[0]["Fulfillment Status"], "Draft");
   await page.screenshot({ path: "artifacts/reports.png", fullPage: true });
-  await page.getByRole("button", { name: "Products", exact: true }).click();
+  await page.getByRole("link", { name: "Products", exact: true }).click();
   await page
     .getByRole("button", { name: "Import Products", exact: true })
     .click();
@@ -317,7 +317,7 @@ try {
     .getByRole("dialog", { name: "Import products", exact: true })
     .getByRole("button", { name: "Close", exact: true })
     .click();
-  await page.getByRole("button", { name: "Recipes", exact: true }).click();
+  await page.getByRole("link", { name: "Recipes", exact: true }).click();
   assert.equal(
     await page
       .getByRole("heading", { name: "New Recipe", exact: true })

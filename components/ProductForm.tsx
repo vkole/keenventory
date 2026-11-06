@@ -1,5 +1,6 @@
 ﻿'use client';
 import Image from 'next/image';
+import {useDraftGuard} from './NavigationGuard';
 import {ProductSavedImages} from './ProductSavedImages';
 import { useEffect, useState } from 'react';
 import type { ProductRecord } from '@/lib/productStore';
@@ -73,6 +74,7 @@ export function ProductForm({
       : blank(),
   );
   const [files, setFiles] = useState<File[]>([]);
+  const markSaved=useDraftGuard({form,files:files.map(f=>[f.name,f.size,f.lastModified])});
   const [preview, setPreview] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -138,6 +140,7 @@ export function ProductForm({
         setFiles([]);
         return;
       }
+      markSaved(another?{form:blank(),files:[]}:undefined);
       if (another) {
         setForm(blank());
         setFiles([]);

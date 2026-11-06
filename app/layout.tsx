@@ -1,4 +1,5 @@
 import "./globals.css";
+import {NavigationGuardProvider} from "@/components/NavigationGuard";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -14,7 +15,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body><NavigationGuardProvider>{children}</NavigationGuardProvider></body>
     </html>
   );
 }

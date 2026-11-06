@@ -1,0 +1,6 @@
+﻿export const sectionRoots:Record<string,string>={dashboard:'/',products:'/?module=products',materials:'/materials',components:'/?module=components',recipes:'/recipes',manufacturing:'/?module=manufacturing',orders:'/?module=orders',purchases:'/?module=purchases',customers:'/?module=orders',suppliers:'/suppliers',vendors:'/suppliers',barcode:'/barcode',content:'/?module=content',calendar:'/?module=calendar',reports:'/?module=reports',reporting:'/?module=reports',settings:'/?module=settings',stocktakes:'/?module=stocktakes',adjustments:'/?module=adjustments',shopify:'/?module=shopify',integrations:'/?module=shopify',stockpush:'/?module=stockpush'};
+export function canonicalSection(value:string){return ({vendors:'suppliers',reporting:'reports',integrations:'shopify'} as Record<string,string>)[value]??value;}
+export function sectionForLocation(pathname:string,query:string){
+ for(const [prefix,section] of [['/materials','materials'],['/recipes','recipes'],['/products','products'],['/components','components'],['/manufacturing','manufacturing'],['/orders','orders'],['/purchases','purchases'],['/customers','orders'],['/suppliers','suppliers'],['/barcode','barcode'],['/settings','settings']] as const)if(pathname===prefix||pathname.startsWith(prefix+'/'))return section;
+ return canonicalSection(new URLSearchParams(query).get('module')||'dashboard');
+}

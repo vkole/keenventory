@@ -1,4 +1,6 @@
 "use client";
+import {WorkspaceSidebar,WorkspaceMobileNav,useSectionNavigation} from "./WorkspaceNavigation";
+import {canonicalSection} from "@/lib/navigation";
 import {SuppliersWorkspace} from './SuppliersWorkspace';
 import {MaterialsWorkspace} from './MaterialsWorkspace';
 import {CalendarWorkspace} from './CalendarWorkspace';
@@ -84,8 +86,9 @@ export function RestrictedWorkspace({
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [form, setForm] = useState<Record<string, string>>({});
+  useEffect(()=>setData(initialData),[initialData]);
   const [importKind,setImportKind]=useState<'products'|'orders'|null>(null);
-  useEffect(()=>{const selectedModule=new URLSearchParams(window.location.search).get('module');const mapped=selectedModule==='reports'?'reporting':selectedModule==='suppliers'?'vendors':selectedModule;if(mapped&&can(user,mapped))setTab(mapped);},[user]);
+  useEffect(()=>{const selectedModule=new URLSearchParams(window.location.search).get('module');const mapped=selectedModule==='shopify'?'integrations':selectedModule==='reports'?'reporting':selectedModule==='suppliers'?'vendors':selectedModule;if(mapped&&can(user,mapped))setTab(mapped);},[user]);
   const [editing, setEditing] = useState<number | null>(null);
   const [productAction, setProductAction] = useState<{
     product: ProductRecord;
@@ -174,39 +177,12 @@ export function RestrictedWorkspace({
       setBusy(false);
     }
   }
-  function navigate(f: string) {
-    setTab(f);
-    setForm({});
-    setEditing(null);
-    setMessage("");
-    setSearch("");
-  }
+  const navigate=useSectionNavigation();
   const links = ["dashboard", ...modules];
   return (
     <div className="min-h-screen bg-[#F4EAE8] text-[#000E2D]">
       <div className="mx-auto flex max-w-[1600px]">
-        <aside className="hidden min-h-screen w-72 shrink-0 bg-[#000E2D] p-6 text-white lg:block">
-          <Link className="mb-8 block font-serif text-2xl" href="/">
-            Keenventory
-          </Link>
-          <nav className="grid gap-2">
-{can(user,"materials")&&<><Link className="rounded-xl p-3" href="/barcode"><ScanBarcode className="mr-2 inline" size={18}/>Barcode</Link><Link className="rounded-xl p-3" href="/materials">Manage Materials</Link></>}
-            {links.map((f) => (
-              <button
-                className={
-                  "rounded-xl p-3 text-left " + (tab === f ? "bg-white/15" : "")
-                }
-                key={f}
-                onClick={() => f==='materials'?window.location.assign('/materials'):navigate(f)}
-              >
-                {f === "dashboard" ? "Dashboard" : featureLabels[f]}
-              </button>
-            ))}
-          </nav>
-          <p className="mt-10 text-sm text-slate-300">
-            Keen Scents · {user.role}
-          </p>
-        </aside>
+        <WorkspaceSidebar user={user} active={canonicalSection(tab)}/>
         <RecordDrawer/><main className="min-w-0 flex-1 p-4 sm:p-8">
           <header className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-white p-5">
             <h1 className="text-2xl font-semibold">
@@ -216,19 +192,7 @@ export function RestrictedWorkspace({
             </h1>
             <AccountMenu user={user} />
           </header>
-          <select
-            aria-label="Module"
-            className={inputClass + " mb-5 lg:hidden"}
-            value={tab}
-            onChange={(e) => ['materials','barcode'].includes(e.target.value)?window.location.assign('/'+e.target.value):navigate(e.target.value)}
-          >
-            {can(user,"materials")&&<option value="barcode">Barcode</option>}
-            {links.map((f) => (
-              <option key={f} value={f}>
-                {f === "dashboard" ? "Dashboard" : featureLabels[f]}
-              </option>
-            ))}
-          </select>
+          <WorkspaceMobileNav user={user} active={canonicalSection(tab)}/>
           {message && (
             <p role="alert" className="mb-4 rounded-xl bg-white p-3">
               {message}

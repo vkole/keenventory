@@ -1,5 +1,6 @@
 'use client';
 import Image from 'next/image';
+import {useDraftGuard} from './NavigationGuard';
 import {DecimalCostInput} from './DecimalCostInput';
 import {parseUnitCost,formatUnitCost} from '@/lib/unitCosts';
 import {MaterialSkuFields} from './MaterialSkuFields';
@@ -21,6 +22,7 @@ export function MaterialForm({material,onSaved,onCancel,user,barcode}:{material?
  const [supplierValid,setSupplierValid]=useState(true);
  const [skuMode,setSkuMode]=useState<MaterialSkuMode>(material?'manual':'auto'),[savedSku,setSavedSku]=useState(material?.sku??'');
  const [costDrafts,setCostDrafts]=useState({cost_per_unit:String(material?.cost_per_unit??0),purchase_price:String(material?.purchase_price??0)});
+ const markSaved=useDraftGuard({form:{...form,category_id:undefined},costDrafts,files:files.map(f=>[f.name,f.size,f.lastModified])});
  useEffect(()=>{const urls=files.map(f=>URL.createObjectURL(f));setPreviews(urls);return()=>urls.forEach(URL.revokeObjectURL);},[files]);
  const field=(key:keyof MaterialInput,label:string,type='text')=>key==='cost_per_unit'||key==='purchase_price'?<DecimalCostInput key={key} label={label} value={costDrafts[key]} onChange={value=>setCostDrafts({...costDrafts,[key]:value})}/>:<label className="grid gap-1 text-sm" key={key}>{label}<input className={inputClass} type={type} min={type==='number'?0:undefined} step={type==='number'?'any':undefined} value={String(form[key]??'')} onChange={e=>setForm({...form,[key]:key==='supplier_id'?(e.target.value?Number(e.target.value):null):type==='number'?Number(e.target.value):e.target.value})}/></label>;
  async function save(e:React.FormEvent){e.preventDefault();const skuChanging=!!savedId&&(skuMode==='regenerate'||form.sku!==savedSku);if(skuChanging&&!confirm('Changing this SKU may affect external integrations, printed barcode labels, or imported spreadsheets. Change the SKU?'))return;setBusy(true);setMessage('');try{
@@ -29,7 +31,7 @@ export function MaterialForm({material,onSaved,onCancel,user,barcode}:{material?
  if(can(user,'materialCosts','edit')){parseUnitCost(costDrafts.cost_per_unit);parseUnitCost(costDrafts.purchase_price);}
  const result=await jsonRequest('/api/materials',{...form,sku_mode:skuMode,confirm_sku_change:skuChanging,...(can(user,'materialCosts','edit')?costDrafts:{}),...(savedId?{id:savedId}:{})},savedId?'PATCH':'POST');setSavedId(result.id);setSavedSku(result.sku);setForm(current=>({...current,sku:result.sku}));setSkuMode('manual');
  for(let i=0;i<files.length;i++){const data=new FormData();data.set('material_id',String(result.id));data.set('file',files[i]);const response=await fetch('/api/materials/images',{method:'POST',body:data});const body=await response.json();if(!response.ok){setFiles(files.slice(i));throw Error('Material saved. '+body.error+' Retry to upload the remaining images.');}}
- onSaved(result.id);
+ markSaved();onSaved(result.id);
  }catch(e){setMessage(e instanceof Error?e.message:'Save failed.');}finally{setBusy(false);}}
  return <form onSubmit={save} className="space-y-5 rounded-3xl bg-white p-5"><h2 className="text-2xl font-semibold">{savedId?'Edit Material':'Create Material'}</h2><fieldset disabled={busy} className="space-y-5">
  <div className="grid gap-4 sm:grid-cols-2"><MaterialSkuFields name={form.name} sku={form.sku} mode={skuMode} existing={!!savedId} onModeChange={setSkuMode} onChange={value=>setForm({...form,...value})}/><MaterialCategorySelect categoryId={form.category_id} name={form.category} user={user} onChange={(id,name)=>setForm(current=>({...current,category_id:id,category:name}))}/>{field('description','Description')}{field('unit','Tracking Unit')}{!savedId&&field('stock_quantity','Opening Quantity','number')}{can(user,'materialCosts','edit')&&field('cost_per_unit','Cost per Tracking Unit','number')}{field('reorder_threshold','Low Stock Threshold / Reorder Point','number')}{field('location','Inventory Location')}</div>

@@ -1,4 +1,5 @@
 "use client";
+import {WorkspaceShell} from "./WorkspaceNavigation";
 import {formatUnitCost} from '@/lib/unitCosts';
 import Link from "next/link";
 import { useState } from "react";
@@ -50,7 +51,7 @@ export function RecipePage({
   }
   const costs = recipe ? planProduction(recipe, data.materials) : null;
   return (
-    <main className="min-h-screen bg-[#F4EAE8] p-4 text-[#000E2D] sm:p-8">
+    <WorkspaceShell user={user}><main className="min-h-screen bg-[#F4EAE8] p-4 text-[#000E2D] sm:p-8">
       <div className="mx-auto max-w-6xl space-y-5">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/?module=recipes">Keenventory / Recipes</Link>
@@ -232,6 +233,6 @@ export function RecipePage({
           <p>Recipe not found.</p>
         )}
       </div>
-    </main>
+    </main></WorkspaceShell>
   );
 }

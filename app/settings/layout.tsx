@@ -1,3 +1,4 @@
+import {WorkspaceShell} from '@/components/WorkspaceNavigation';
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -12,7 +13,7 @@ export default async function Layout({
   const user = await viewer(new Headers(await headers())).catch(() => null);
   if (!user) redirect("/login");
   return (
-    <main className="min-h-screen bg-[#F4EAE8] p-4 text-[#000E2D] sm:p-8">
+    <WorkspaceShell user={user}><main className="min-h-screen bg-[#F4EAE8] p-4 text-[#000E2D] sm:p-8">
       <div className="mx-auto max-w-6xl">
         <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
           <Link href="/" className="font-serif text-2xl">
@@ -22,6 +23,6 @@ export default async function Layout({
         </header>
         {children}
       </div>
-    </main>
+    </main></WorkspaceShell>
   );
 }

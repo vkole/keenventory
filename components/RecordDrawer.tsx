@@ -40,7 +40,7 @@ export function RecordDrawer({
   return (
     <div
       role="dialog"
-      aria-modal="true"
+      aria-modal="false"
       aria-label="Original record"
       className="fixed inset-0 z-40 overflow-auto bg-[#000E2D]/40 p-4"
     >

@@ -1,4 +1,5 @@
 'use client';
+import {workspaceTabs as tabs,WorkspaceSidebar,WorkspaceMobileNav,useNavigationKey,useSectionNavigation} from './WorkspaceNavigation';
 import {DecimalCostInput} from './DecimalCostInput';
 import {parseUnitCost,formatUnitCost} from '@/lib/unitCosts';
 import {SuppliersWorkspace} from './SuppliersWorkspace';
@@ -55,25 +56,7 @@ import {
 import type { DashboardData, Material, Product, Recipe, Order, PurchaseOrder } from '@/lib/data';
 
 
-const tabs = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
-  { id: 'barcode', label: 'Barcode', icon: ScanBarcode },
-  { id: 'materials', label: 'Materials', icon: Warehouse },
-  { id: 'components', label: 'Components', icon: Package2 },
-  { id: 'products', label: 'Products', icon: Package2 },
-  { id: 'recipes', label: 'Recipes', icon: Factory },
-  { id: 'manufacturing', label: 'Manufacturing', icon: Boxes },
-  { id: 'orders', label: 'Orders', icon: ShoppingCart },
-  { id: 'purchases', label: 'Purchases', icon: Truck },
-  { id: 'suppliers', label: 'Suppliers & Contacts', icon: Truck },
-  { id: 'stocktakes', label: 'Stocktakes', icon: ArrowRightLeft },
-  { id: 'adjustments', label: 'Adjustments', icon: AlertTriangle },
-  { id: 'content', label: 'Content Calendar', icon: CalendarDays },
-  { id: 'reports', label: 'Reports & Analytics', icon: BarChart3 },
-  { id: 'shopify', label: 'Shopify Integration', icon: ShoppingCart },
-  { id: 'stockpush', label: 'Stock Push', icon: ArrowRightLeft },
-  { id: 'settings', label: 'Settings', icon: Settings },
-] as const;
+
 
 const currency = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -84,13 +67,16 @@ const currency = new Intl.NumberFormat('en-US', {
 const barColors = ['#000E2D', '#868F9E', '#E8C9C9', '#F4EAE8', '#E2E1E2'];
 
 export function InventoryWorkspace({ initialData, user }: { initialData: DashboardData; user:Viewer }) {
-  if(!['products','materials','components','recipes','manufacturing','orders','purchases','vendors','stocktakes','adjustments','reporting','integrations','profitability','productPricing','materialCosts','orderTotals','stockPush','transfers','inventoryExports'].every(f=>features[f].every(a=>can(user,f,a)))) return <RestrictedWorkspace initialData={initialData} user={user}/>;
-  return <FullWorkspace initialData={initialData} user={user}/>;
+  const navigationKey=useNavigationKey();
+  if(!['products','materials','components','recipes','manufacturing','orders','purchases','vendors','stocktakes','adjustments','reporting','integrations','profitability','productPricing','materialCosts','orderTotals','stockPush','transfers','inventoryExports'].every(f=>features[f].every(a=>can(user,f,a)))) return <RestrictedWorkspace key={navigationKey} initialData={initialData} user={user}/>;
+  return <FullWorkspace key={navigationKey} initialData={initialData} user={user}/>;
 }
 function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Viewer }) {
+  const navigate=useSectionNavigation();
   const [data, setData] = useState(initialData);
+  useEffect(()=>setData(initialData),[initialData]);
   const [orderImport,setOrderImport]=useState(false);
-  useEffect(()=>{const selectedModule=new URLSearchParams(window.location.search).get('module');if(selectedModule==='barcode'){window.location.assign('/barcode');return;}if(tabs.some(t=>t.id===selectedModule))setActiveTab(selectedModule as (typeof tabs)[number]['id']);},[]);
+  useEffect(()=>{const selectedModule=new URLSearchParams(window.location.search).get('module');if(selectedModule==='barcode'){navigate('barcode');return;}if(tabs.some(t=>t.id===selectedModule))setActiveTab(selectedModule as (typeof tabs)[number]['id']);},[navigate]);
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]['id']>('dashboard');
   const [viewMode, setViewMode] = useState<Record<string, 'list' | 'calendar'>>({
     dashboard: 'list',
@@ -620,44 +606,10 @@ function FullWorkspace({ initialData,user }: { initialData:DashboardData;user:Vi
   return (
     <div className="min-h-screen bg-[#F4EAE8] text-[#000E2D]">
       <div className="mx-auto flex max-w-[1600px]">
-        <aside className="hidden min-h-screen w-72 flex-col bg-[#000E2D] p-6 text-white lg:flex">
-          <div className="mb-8 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E8C9C9] text-lg font-bold text-[#000E2D]">K</div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-300">Keenventory</p>
-              <h1 className="text-xl font-semibold">Inventory OS</h1>
-            </div>
-          </div>
-
-          <nav className="space-y-2">
-            {tabs.filter(t=>t.id!=='content'||can(user,'content')).map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => id==='barcode'?window.location.assign('/barcode'):setActiveTab(id)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-medium transition ${
-                  activeTab === id ? 'bg-white/10 text-white' : 'text-slate-300 hover:bg-white/5'
-                }`}
-              >
-                <Icon size={18} />
-                {label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="mt-auto rounded-2xl bg-white/5 p-4">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-300">Keen Scents Workspace</p>
-            <p className="mt-2 text-sm text-slate-100">Inventory, production, and content planning in one workspace.</p>
-          </div>
-        </aside>
+        <WorkspaceSidebar user={user} active={activeTab}/>
 
         <RecordDrawer excludeProducts/><main className="min-w-0 flex-1 p-4 md:p-6 xl:p-8">
-          <label className="mb-4 grid gap-2 text-sm lg:hidden">
-            Module
-            <select aria-label="Module" className="rounded-xl border border-[#E2E1E2] bg-white p-3" value={activeTab} onChange={e => { const tab = tabs.find(tab => tab.id === e.target.value); if (tab) {if(tab.id==='barcode')window.location.assign('/barcode');else setActiveTab(tab.id);} }}>
-              {tabs.filter(t=>t.id!=='content'||can(user,'content')).map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
-            </select>
-          </label>
+          <WorkspaceMobileNav user={user} active={activeTab}/>
           <header className="mb-8 flex flex-col gap-4 rounded-3xl border border-[#E2E1E2] bg-white/80 p-4 shadow-soft backdrop-blur md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#868F9E]">Operations Overview</p>
