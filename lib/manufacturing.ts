@@ -119,7 +119,7 @@ export function completeBatch(
     actual_quantity: number;
     actual_minutes: number;
     hourly_labor_rate: number;
-    consumption: { material_id: number; quantity: number }[];
+    consumption: { material_id: number; quantity: number; unit_version?:number }[];
   },
 ) {
   return db
@@ -158,6 +158,7 @@ export function completeBatch(
           throw new Error(
             `Insufficient unreserved inventory for ${m?.name ?? c.material_id}.`,
           );
+        if((m.unit_version??0)>0&&c.unit_version!==m.unit_version)throw Error('Tracking units changed. Refresh the manufacturing batch and review actual consumption.');
         const snap = expected.find((e) => e.id === c.material_id)!;
         db.prepare("INSERT INTO inventory_ledger(material_id,location,delta,balance,kind,reason,reference_type,reference_id,unit_cost) VALUES (?,?,?,?,'Manufacturing consumption',?,'manufacturing',?,?)").run(c.material_id,'Inventory',-c.quantity,quantity(decimal(m.stock_quantity).minus(c.quantity)),`Batch #${p.id}`,p.id,m.cost_per_unit);
         materialCost = materialCost.plus(

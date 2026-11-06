@@ -1,0 +1,41 @@
+import 'next/dist/server/node-environment-baseline.js';
+import {chromium} from '@playwright/test';
+import {mkdtempSync,rmSync,readFileSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {randomBytes} from 'node:crypto';
+import {createServer} from 'node:http';
+import assert from 'node:assert/strict';
+import sharp from 'sharp';
+import next from 'next';
+const typeConfig=readFileSync('tsconfig.json','utf8'),nextEnv=readFileSync('next-env.d.ts','utf8');
+const folder=mkdtempSync(path.join(tmpdir(),'keen-barcode-ui-'));
+const base='http://localhost:3103';
+Object.assign(process.env,{KEENVENTORY_BARCODE_UI_TEST:'true',KEENVENTORY_DATA_DIR:folder,KEENVENTORY_MEDIA_STORAGE:'disk',BETTER_AUTH_URL:base,BETTER_AUTH_SECRET:randomBytes(48).toString('hex'),KEENVENTORY_CHECK_BREACHED_PASSWORDS:'false'});
+const {db}=await import('../lib/db.ts');
+const {activate,tokenHash}=await import('../lib/accounts.ts');
+const {authentication}=await import('../lib/auth.ts');
+const token=randomBytes(32).toString('base64url'),password=randomBytes(24).toString('hex');
+db.prepare('INSERT INTO owner_claims(id,email,name,token_hash,expires_at) VALUES(1,?,?,?,?)').run('barcode@example.test','Barcode Tester',tokenHash(token),Date.now()+60000);
+await activate({token,password},true);
+const auth=await authentication();
+const response=await auth.api.signInEmail({body:{email:'barcode@example.test',password},asResponse:true});
+assert.ok(response.ok);
+const cookie=response.headers.getSetCookie().map(v=>v.split(';')[0]).join('; ');
+const app=next({dev:true,hostname:'localhost',port:3103,conf:{distDir:'.next-barcode-test',devIndicators:false}});await app.prepare();
+const server=createServer(app.getRequestHandler());await new Promise(r=>server.listen(3103,r));
+const cameraPath=path.join(folder,'camera.y4m');
+const browser=await chromium.launch({channel:'msedge',headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream','--use-file-for-fake-video-capture='+cameraPath]});
+try {
+const context=await browser.newContext({viewport:{width:1440,height:1000}});await context.addCookies(cookie.split('; ').map(v=>{const i=v.indexOf('=');return {name:v.slice(0,i),value:v.slice(i+1),url:base};}));const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const {saveMaterial}=await import('../lib/materialStore.ts');const materialId=saveMaterial({name:'Unit Browser Wax',unit:'lb',stock_quantity:5,cost_per_unit:'3.20',reorder_threshold:1,barcodes:[{value:'UNIT-BROWSER-WAX',type:'CODE_128',package_quantity:1,package_unit:'lb'}]});
+await page.goto(base+'/materials?id='+materialId+'&edit=1');const unit=page.getByLabel('Tracking Unit',{exact:true});await unit.waitFor();assert.equal(await unit.inputValue(),'lb');await unit.fill('oz');await page.getByRole('button',{name:'Review Unit Change',exact:true}).click();let modal=page.getByRole('dialog',{name:'Confirm Tracking Unit Change'});await page.getByRole('button',{name:'Confirm Unit Change',exact:true}).waitFor();await page.getByText('80 oz',{exact:true}).waitFor();await modal.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal((await (await context.request.get(base+'/api/materials?id='+materialId)).json()).material.unit,'lb');assert.equal(await unit.inputValue(),'lb');
+await unit.fill('oz');await page.getByRole('button',{name:'Review Unit Change',exact:true}).click();await page.getByRole('button',{name:'Confirm Unit Change',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(await unit.inputValue(),'oz');assert.equal(await page.getByLabel('Cost per Tracking Unit',{exact:true}).inputValue(),'0.2');
+await page.getByRole('navigation',{name:'Main navigation'}).getByRole('link',{name:'Materials',exact:true}).click();await page.getByLabel('Search materials').waitFor();await page.getByRole('button',{name:'Unit Browser Wax',exact:true}).click();await page.getByText('80 oz Available',{exact:false}).waitFor();await page.getByRole('button',{name:'View History',exact:true}).click();await page.getByText('Recorded Unit',{exact:true}).waitFor();assert.ok(await page.getByRole('cell',{name:'lb',exact:true}).count());assert.ok(await page.getByRole('cell',{name:'oz',exact:true}).count());
+await page.goto(base+'/barcode');await page.getByLabel('Enter Code Manually').fill('UNIT-BROWSER-WAX');await page.getByRole('button',{name:'Search',exact:true}).click();await page.getByRole('heading',{name:'Unit Browser Wax',exact:true}).waitFor();await page.getByText('80 oz Available',{exact:false}).waitFor();
+await page.goto(base+'/materials?id='+materialId+'&edit=1');await page.getByLabel('Tracking Unit',{exact:true}).fill('ml');await page.getByRole('button',{name:'Review Unit Change',exact:true}).click();await page.getByText(/These units are incompatible/).waitFor();assert.equal(await page.getByRole('button',{name:'Confirm Unit Change',exact:true}).count(),0);await page.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+const bottle=saveMaterial({name:'Unit Browser Bottle',unit:'Bottles',stock_quantity:2,cost_per_unit:8});await page.goto(base+'/materials?id='+bottle+'&edit=1');await page.getByLabel('Tracking Unit',{exact:true}).fill('fl oz');await page.getByRole('button',{name:'Review Unit Change',exact:true}).click();await page.getByText(/These units are incompatible/).waitFor();await page.getByLabel('Material-specific conversion factor').fill('16');await page.getByRole('button',{name:'Update Conversion Preview',exact:true}).click();await page.getByText('32 fl oz',{exact:true}).waitFor();await page.getByRole('button',{name:'Confirm Unit Change',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(await page.getByLabel('Cost per Tracking Unit',{exact:true}).inputValue(),'0.5');assert.deepEqual(errors,[]);
+console.log('PASS: editable saved units, conversion review/cancel/confirm, quantity and cost persistence, stock history unit labels, scanner updates and confirmed material-specific factors.');await context.close();
+} catch(error){console.error(error);process.exitCode=1;} finally {await browser.close();await new Promise(r=>server.close(r));await app.close();writeFileSync('tsconfig.json',typeConfig);writeFileSync('next-env.d.ts',nextEnv);db.close();try{if(!folder.startsWith(path.join(tmpdir(),'keen-barcode-ui-')))throw Error('Unexpected test directory');rmSync(folder,{recursive:true,force:true,maxRetries:3,retryDelay:200});}catch{console.warn('Temporary browser fixture remains locked until Node exits:',folder);}}
+
+process.exit(process.exitCode||0);

@@ -1,3 +1,4 @@
+import {normalizeMaterialHistory} from './unitHistory';
 import type Database from "better-sqlite3";
 import { reportTypes, type ReportResult, type ReportRow } from "./reportTypes";
 import {
@@ -137,11 +138,13 @@ export function buildReport(
         "SELECT * FROM manufacturing_batches WHERE organization_id=1 AND status='Completed'",
       )
       .all() as Row[],
-    ledger = db
+    originalLedger = db
       .prepare(
         "SELECT * FROM inventory_ledger WHERE organization_id=1 ORDER BY id",
       )
       .all() as Row[];
+  const ledger=normalizeMaterialHistory(db,originalLedger,materials,['delta','balance']);
+  if(ledger.some(row=>row.original_recorded_unit))warnings.add('Historical material quantities are shown in current tracking units. Original units remain in stock history.');
   const hasPeriod = (date: string, a: number, b: number) => {
     const t = /^\d{4}-\d{2}-\d{2}$/.test(date)
       ? Date.parse(instant(date, "00:00", zone))
@@ -149,11 +152,12 @@ export function buildReport(
     return t >= a && t < b;
   };
   function inventoryAt(b: number) {
-    const snapshots = db
+    const originalSnapshots = db
       .prepare(
         "SELECT * FROM inventory_snapshots WHERE organization_id=1 ORDER BY id",
       )
       .all() as Row[];
+    const snapshots=normalizeMaterialHistory(db,originalSnapshots,materials,['quantity']);
     const list: Row[] = [];
     for (const [kind, items] of [
       ["product", products],

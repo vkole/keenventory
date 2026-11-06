@@ -39,7 +39,7 @@ export function ManufacturingPlanner({
   const [minutes, setMinutes] = useState(0);
   const [rate, setRate] = useState(0);
   const [consumption, setConsumption] = useState<
-    { material_id: number; quantity: number }[]
+    { material_id: number; quantity: number;unit_version?:number }[]
   >([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -80,7 +80,7 @@ export function ManufacturingPlanner({
     setConsumption(
       snapshot.plan.availability.map((a) => ({
         material_id: a.id,
-        quantity: a.required,
+        quantity: a.required,unit_version:a.unit_version??0,
       })),
     );
     setMessage('');
@@ -187,7 +187,7 @@ export function ManufacturingPlanner({
                   )
                     .map(
                       (c) =>
-                        `${snapshot?.plan.availability.find((a) => a.id === c.material_id)?.name ?? c.material_id}: ${c.quantity}`,
+                        `${snapshot?.plan.availability.find((a) => a.id === c.material_id)?.name ?? c.material_id}: ${c.quantity} ${snapshot?.plan.availability.find((a) => a.id === c.material_id)?.unit??'unit not recorded'}`,
                     )
                     .join(', ')}
                 </p>

@@ -15,5 +15,5 @@ export function useLeavePage(){const guard=useContext(GuardContext);return useCa
 export function useDraftGuard(value:unknown){
  const guard=useContext(GuardContext),id=useId(),serialized=JSON.stringify(value),baseline=useRef(serialized),latest=useRef(serialized);latest.current=serialized;const [revision,setRevision]=useState(0);
  useEffect(()=>{guard?.set(id,serialized!==baseline.current);return()=>guard?.forget(id);},[guard,id,serialized,revision]);
- return (nextValue?:unknown)=>{baseline.current=nextValue===undefined?latest.current:JSON.stringify(nextValue);guard?.forget(id);setRevision(n=>n+1);};
+ return Object.assign((nextValue?:unknown)=>{baseline.current=nextValue===undefined?latest.current:JSON.stringify(nextValue);guard?.forget(id);setRevision(n=>n+1);},{isDirty:serialized!==baseline.current});
 }

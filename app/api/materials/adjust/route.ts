@@ -4,13 +4,13 @@ import {material} from '@/lib/materialStore';
 import {audit,requirePermission} from '@/lib/access';
 import {z} from 'zod';
 import Decimal from 'decimal.js';
-const schema=z.object({material_id:z.number().int().positive(),type:z.enum(['add','remove','count']),quantity:z.number().finite().nonnegative(),expected_quantity:z.number().finite(),reason:z.string().trim().min(1).max(500),notes:z.string().max(4000),date:z.string().date(),request_key:z.string().uuid(),confirm:z.literal(true)});
+const schema=z.object({expected_unit_version:z.number().int().nonnegative().optional(),material_id:z.number().int().positive(),type:z.enum(['add','remove','count']),quantity:z.number().finite().nonnegative(),expected_quantity:z.number().finite(),reason:z.string().trim().min(1).max(500),notes:z.string().max(4000),date:z.string().date(),request_key:z.string().uuid(),confirm:z.literal(true)});
 export const POST=featureApi('adjustments','create',async(req,user)=>{
  requirePermission(user,'materials','view');const p=schema.parse(await req.json());
  db.transaction(()=>{
  const previous=db.prepare('SELECT * FROM material_adjustment_requests WHERE request_key=?').get(p.request_key) as {user_id:string;details:string}|undefined;
  if(previous){if(previous.user_id!==user.id || previous.details!==JSON.stringify(p))throw Error('Adjustment key already used.');return;}
- const m=material(p.material_id);if(m.archived)throw Error('Restore this material before adjusting stock.');
+ const m=material(p.material_id);if((m.unit_version??0)>0&&p.expected_unit_version!==m.unit_version)throw Error('Tracking units changed. Reload the material before adjusting inventory.');if(m.archived)throw Error('Restore this material before adjusting stock.');
  if(m.stock_quantity!==p.expected_quantity)throw Error('Stock changed. Reload the material and review the adjustment again.');
  const next=new Decimal(p.type==='count'?p.quantity:m.stock_quantity).plus(p.type==='add'?p.quantity:p.type==='remove'?-p.quantity:0).toDecimalPlaces(6).toNumber();
  if(next<0)throw Error('Cannot remove more than available stock.');if(next<m.reserved_quantity)throw Error('This adjustment would consume stock reserved for manufacturing. Review the planned batches first.');const delta=new Decimal(next).minus(m.stock_quantity).toNumber();

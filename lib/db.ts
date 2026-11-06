@@ -1,3 +1,4 @@
+import {initializeUnitChanges} from './unitChangeSchema';
 import {initializeCategories} from './categorySchema';
 import {initializeSuppliers} from './supplierSchema';
 import fs from 'fs';
@@ -409,3 +410,4 @@ initializeEnhancements(db);
 initializeMaterials(db);
 initializeSuppliers(db);
 initializeCategories(db);
+initializeUnitChanges(db);

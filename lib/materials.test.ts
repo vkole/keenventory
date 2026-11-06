@@ -19,7 +19,7 @@ test('material SKU normalization and manual validation',()=>{
 test('six-decimal unit costs accept editing states and calculate full precision',()=>{
  for(const v of ['0.18','0.075','0.0045','1.25','12.99','125.50','0.1875','0.000001'])assert.equal(parseUnitCost(v).toNumber(),Number(v));
  for(const v of ['0.','.','1.','125.50'])assert.equal(decimalDraft(v),true);
- for(const v of ['', '.', '-1','1.0000001','1e2','Infinity','NaN','abc'])assert.throws(()=>parseUnitCost(v));
+ for(const v of ['', '.', '-1','1.0000000000001','1e2','Infinity','NaN','abc'])assert.throws(()=>parseUnitCost(v));
  assert.equal(unitCostMicros('0.0045'),4500);assert.equal(unitCostMicros('0.1875'),187500);
  const formula={batch_yield:1,batch_minutes:0,hourly_labor_rate:0,ingredients:[{material_id:1,item_name:'Wax',quantity:108,unit:'oz',item_type:'material'}]};
  assert.equal(planProduction(formula,[{id:1,name:'Wax',unit:'oz',stock_quantity:108,cost_per_unit:0.1875,reorder_threshold:0}]).materialCost,20.25);

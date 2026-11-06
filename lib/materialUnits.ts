@@ -1,0 +1,13 @@
+﻿import Decimal from 'decimal.js';
+export type UnitConversion={from_unit:string;to_unit:string;factor:string};
+export const trackingUnits=[['Weight',['mg','g','kg','oz','lb']],['Volume',['ml','L','fl oz','gal']],['Count',['Each','Pieces','Packs','Boxes','Bags','Bottles','Rolls']]] as const;
+const aliases:Record<string,string>={ounces:'oz',ounce:'oz',pounds:'lb',pound:'lb',lbs:'lb',grams:'g',gram:'g',kilogram:'kg',kilograms:'kg',milligram:'mg',milligrams:'mg',milliliters:'ml',milliliter:'ml',liters:'l',liter:'l',litres:'l',litre:'l','fluid ounce':'fl oz','fluid ounces':'fl oz',gallons:'gal',gallon:'gal',item:'each',items:'each',unit:'each',units:'each',ea:'each',piece:'each',pieces:'each',packs:'pack',boxes:'box',bags:'bag',bottles:'bottle',rolls:'roll'};
+export function unitId(value:string){const key=value.trim().replace(/\s+/g,' ').toLowerCase();return aliases[key]??key;}
+const measures:Record<string,[string,string]>={oz:['mass','28.349523125'],lb:['mass','453.59237'],g:['mass','1'],kg:['mass','1000'],mg:['mass','0.001'],ml:['volume','1'],l:['volume','1000'],'fl oz':['volume','29.5735295625'],gal:['volume','3785.411784'],each:['count:each','1'],pack:['count:pack','1'],box:['count:box','1'],bag:['count:bag','1'],bottle:['count:bottle','1'],roll:['count:roll','1']};
+function standard(from:string,to:string){if(from===to)return new Decimal(1);const a=measures[from],b=measures[to];return a&&b&&a[0]===b[0]?new Decimal(a[1]).div(b[1]):null;}
+export function conversionFactor(from:string,to:string,edges:UnitConversion[]=[]){
+ const source=unitId(from),target=unitId(to);if(!source||!target)throw Error('Choose both tracking units.');const direct=standard(source,target);if(direct)return direct;
+ const links=edges.map(edge=>({...edge,from_unit:unitId(edge.from_unit),to_unit:unitId(edge.to_unit)}));const nodes=[...new Set([source,target,...Object.keys(measures),...links.flatMap(e=>[e.from_unit,e.to_unit])])];const queue=[{unit:source,factor:new Decimal(1)}],seen=new Set([source]);
+ while(queue.length){const current=queue.shift()!;for(const next of nodes){if(seen.has(next))continue;let factor=standard(current.unit,next);if(!factor){const edge=links.find(e=>e.from_unit===current.unit&&e.to_unit===next||e.to_unit===current.unit&&e.from_unit===next);if(edge){factor=new Decimal(edge.factor);if(!factor.isFinite()||factor.lte(0))throw Error('Invalid stored unit conversion.');if(edge.to_unit===current.unit)factor=new Decimal(1).div(factor);}}if(!factor)continue;const value=current.factor.times(factor);if(next===target)return value;seen.add(next);queue.push({unit:next,factor:value});}}
+ throw Error('These units are incompatible. Enter a confirmed material-specific conversion factor; weight ounces and fluid ounces are different.');
+}

@@ -16,6 +16,7 @@ export type Stock = {
   cost_per_unit: number;
   reorder_threshold: number;
   reserved_quantity?: number;
+  unit_version?:number;
 };
 export type Formula = {
   batch_yield: number;

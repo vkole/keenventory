@@ -8,7 +8,7 @@ function response(id:number,user:Parameters<typeof can>[0]) {
 }
 export const GET=featureApi('materials','view',async(req,user)=>{
  ensureDatabase(); const p=new URL(req.url).searchParams;
- if(p.has('history')) return Response.json({history:db.prepare('SELECT id,delta,balance,kind,reason,created_at FROM inventory_ledger WHERE material_id=? ORDER BY id DESC LIMIT 200').all(Number(p.get('history')))});
+ if(p.has('history')){const history=db.prepare('SELECT id,delta,balance,kind,reason,created_at,recorded_unit,unit_cost FROM inventory_ledger WHERE material_id=? ORDER BY id DESC LIMIT 200').all(Number(p.get('history'))) as Record<string,unknown>[];if(!can(user,'materialCosts'))history.forEach(row=>delete row.unit_cost);return Response.json({history});}
  if(p.has('id')) return Response.json({material:response(Number(p.get('id')),user)});
  const ids=db.prepare('SELECT id FROM materials WHERE archived=? ORDER BY name').all(p.get('archived')==='1'?1:0) as {id:number}[];
  return Response.json({materials:ids.map(m=>response(m.id,user))});

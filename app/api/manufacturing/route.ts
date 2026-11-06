@@ -24,7 +24,7 @@ const complete = z.object({
   actual_minutes: amount,
   hourly_labor_rate: amount,
   consumption: z.array(
-    z.object({ material_id: z.number().int().positive(), quantity: amount }),
+    z.object({ material_id: z.number().int().positive(), quantity: amount,unit_version:z.number().int().nonnegative().optional() }),
   ),
 });
 async function handleGET() {

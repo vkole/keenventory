@@ -1,4 +1,7 @@
 import {db} from './db';
+import {unitId} from './materialUnits';
+import {materialUnitEdges} from './unitConversionStore';
+import {parseUnitCost} from './unitCosts';
 import {getCategory,resolveCategory} from './categoryStore';
 import {supplier} from './supplierStore';
 import {purchaseUnitCost} from './purchaseUnits';
@@ -19,7 +22,9 @@ export function material(id:number): Record<string,any> {
 
  const reserved=inventory(db).find(s=>s.id===id)?.reserved_quantity??0;
  const available=Number((m.stock_quantity-reserved).toFixed(6));
- if(m.cost_per_unit_micros!==null)m.cost_per_unit=new Decimal(m.cost_per_unit_micros).div(1_000_000).toNumber();
+ m.unit_conversions=materialUnitEdges(db,id);
+ if(m.cost_per_unit_exact!==null)m.cost_per_unit=new Decimal(m.cost_per_unit_exact).toNumber();
+ else if(m.cost_per_unit_micros!==null)m.cost_per_unit=new Decimal(m.cost_per_unit_micros).div(1_000_000).toNumber();
  return {...m,reserved_quantity:reserved,available_quantity:available,stock_status:stockStatus(available,m.reorder_threshold),barcodes:(db.prepare('SELECT * FROM material_barcodes WHERE material_id=? ORDER BY id').all(id) as Record<string,unknown>[]).map(b=>({...b,active:!!b.active})),images:db.prepare('SELECT id,is_primary,created_at FROM material_images WHERE material_id=? ORDER BY is_primary DESC,id').all(id)};
 }
 export function saveMaterial(input:unknown,id?:number) {
@@ -41,15 +46,17 @@ export function saveMaterial(input:unknown,id?:number) {
    if(existing&&p.sku!==existing.sku&&confirm_sku_change!==true)throw Error('Confirm the SKU change. External integrations, printed labels, and imported spreadsheets may be affected.');
    if(skuTaken(p.sku))throw Error('This SKU is already used by another material in your organization. Choose another SKU or regenerate it.');
   }
-  if(existing && (existing.unit!==p.unit || existing.location!==p.location) && (existing.stock_quantity!==0 || db.prepare('SELECT id FROM inventory_ledger WHERE material_id=? LIMIT 1').get(id))) throw Error('Tracking unit and location cannot change after stock history exists.');
+  if(existing&&existing.unit!==p.unit)throw Error('Review and confirm the unit change before saving.');
+  if(existing && existing.location!==p.location && (existing.stock_quantity!==0 || db.prepare('SELECT id FROM inventory_ledger WHERE material_id=? LIMIT 1').get(id))) throw Error('Location cannot change after stock history exists.');
   if(!p.supplier_uuid&&p.supplier_id){const company=db.prepare('SELECT uuid FROM suppliers WHERE id=? AND organization_id=1').get(p.supplier_id) as {uuid:string}|undefined;if(!company)throw Error('Supplier not found. Please select an existing supplier or create a new one.');p.supplier_uuid=company.uuid;}
   if(p.supplier_uuid){const company=supplier(p.supplier_uuid);p.supplier_id=company.id;p.supplier_name=company.company_name;p.supplier_website=company.website;}
-  if(apply_purchase_cost){p.cost_per_unit=purchaseUnitCost(p.purchase_quantity,p.quantity_unit||p.unit,p.unit,p.purchase_price).cost_per_unit;unitCostMicros(p.cost_per_unit);}
+  if(apply_purchase_cost){p.cost_per_unit=purchaseUnitCost(p.purchase_quantity,p.quantity_unit||p.unit,p.unit,p.purchase_price,id?materialUnitEdges(db,id):[]).cost_per_unit;unitCostMicros(p.cost_per_unit);}
   const {barcodes,stock_quantity,supplier_links,...fields}=p;
-  const keys=Object.keys(fields);
-  if(id) db.prepare(`UPDATE materials SET ${keys.map(k=>`${k}=?`).join(',')},updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(...Object.values(fields),id);
+  const storedFields={...fields,unit_id:unitId(p.unit)};
+  const keys=Object.keys(storedFields);
+  if(id) db.prepare(`UPDATE materials SET ${keys.map(k=>`${k}=?`).join(',')},updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(...Object.values(storedFields),id);
   else {
-   id=Number(db.prepare(`INSERT INTO materials (${keys.join(',')},stock_quantity) VALUES (${keys.map(()=>'?').join(',')},?)`).run(...Object.values(fields),stock_quantity).lastInsertRowid);
+   id=Number(db.prepare(`INSERT INTO materials (${keys.join(',')},stock_quantity) VALUES (${keys.map(()=>'?').join(',')},?)`).run(...Object.values(storedFields),stock_quantity).lastInsertRowid);
    if(stock_quantity>0) db.prepare("INSERT INTO inventory_ledger(material_id,location,delta,balance,kind,reason,reference_type,reference_id,unit_cost) VALUES (?,?,?,?,'Opening','Initial material setup','material',?,?)").run(id,p.location,stock_quantity,stock_quantity,id,p.cost_per_unit);
   }
   const primaryLink=p.supplier_uuid?{supplier_uuid:p.supplier_uuid,supplier_sku:p.supplier_sku,product_url:p.product_url,purchase_unit:p.purchase_unit,purchase_quantity:p.purchase_quantity,quantity_unit:p.quantity_unit||p.unit,purchase_price:p.purchase_price,preferred_reorder_quantity:p.preferred_reorder_quantity,lead_time_days:p.lead_time_days}:null;
@@ -64,7 +71,8 @@ export function saveMaterial(input:unknown,id?:number) {
    const duplicate=db.prepare('SELECT m.name FROM material_barcodes b JOIN materials m ON m.id=b.material_id WHERE b.value=? AND b.material_id<>?').get(b.value,id) as {name:string}|undefined;
    if(duplicate) throw Error(`Barcode ${b.value} is already assigned to ${duplicate.name}.`);
   }
-  db.prepare('UPDATE materials SET cost_per_unit_micros=? WHERE id=?').run(unitCostMicros(p.cost_per_unit),id);
+  const rawCost=existing&&new Decimal(p.cost_per_unit).eq(existing.cost_per_unit)&&existing.cost_per_unit_exact?existing.cost_per_unit_exact:apply_purchase_cost?p.cost_per_unit:(input as {cost_per_unit?:unknown}).cost_per_unit??p.cost_per_unit;
+  db.prepare('UPDATE materials SET cost_per_unit_micros=?,cost_per_unit_exact=? WHERE id=?').run(unitCostMicros(rawCost),parseUnitCost(rawCost).toString(),id);
   const retained:number[]=[];
   for(const b of barcodes){
    const old=db.prepare('SELECT id FROM material_barcodes WHERE material_id=? AND value=?').get(id,b.value) as {id:number}|undefined;
